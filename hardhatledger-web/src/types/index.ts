@@ -209,6 +209,8 @@ export interface DashboardSummary {
   low_stock_count: number;
   total_clients: number;
   total_products: number;
+  total_suppliers: number;
+  total_categories: number;
   recent_transactions: {
     id: number;
     transaction_number: string;
@@ -219,6 +221,13 @@ export interface DashboardSummary {
     created_at: string;
   }[];
   sales_trend: { date: string; total: number; count: number }[];
+  low_stock_items: {
+    id: number;
+    name: string;
+    sku: string;
+    quantity_on_hand: number;
+    reorder_level: number;
+  }[];
 }
 
 export interface CartItem {

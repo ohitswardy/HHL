@@ -3,11 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Client;
-use App\Models\InventoryStock;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\SalesTransaction;
+use App\Models\Supplier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -29,6 +30,24 @@ class DashboardController extends Controller
 
         $totalClients = Client::count();
         $totalProducts = Product::where('is_active', true)->count();
+        $totalSuppliers = Supplier::count();
+        $totalCategories = Category::count();
+
+        $lowStockItems = Product::with('stock')
+            ->where('is_active', true)
+            ->whereHas('stock', function ($q) {
+                $q->whereRaw('quantity_on_hand <= (SELECT reorder_level FROM products WHERE products.id = inventory_stock.product_id)');
+            })
+            ->orderBy('name')
+            ->limit(8)
+            ->get()
+            ->map(fn ($p) => [
+                'id'               => $p->id,
+                'name'             => $p->name,
+                'sku'              => $p->sku,
+                'quantity_on_hand' => (int) ($p->stock->quantity_on_hand ?? 0),
+                'reorder_level'    => (int) $p->reorder_level,
+            ]);
 
         $recentTransactions = SalesTransaction::with(['client', 'user'])
             ->orderByDesc('created_at')
@@ -62,8 +81,11 @@ class DashboardController extends Controller
             'low_stock_count' => $lowStockCount,
             'total_clients' => $totalClients,
             'total_products' => $totalProducts,
+            'total_suppliers' => $totalSuppliers,
+            'total_categories' => $totalCategories,
             'recent_transactions' => $recentTransactions,
             'sales_trend' => $salesTrend,
+            'low_stock_items' => $lowStockItems,
         ]);
     }
 }
