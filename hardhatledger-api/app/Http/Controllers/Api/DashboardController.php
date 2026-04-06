@@ -10,11 +10,12 @@ use App\Models\PurchaseOrder;
 use App\Models\SalesTransaction;
 use App\Models\Supplier;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    public function summary(): JsonResponse
+    public function summary(Request $request): JsonResponse
     {
         $todaysSales = SalesTransaction::whereDate('created_at', today())
             ->where('status', 'completed')
@@ -39,7 +40,6 @@ class DashboardController extends Controller
                 $q->whereRaw('quantity_on_hand <= (SELECT reorder_level FROM products WHERE products.id = inventory_stock.product_id)');
             })
             ->orderBy('name')
-            ->limit(8)
             ->get()
             ->map(fn ($p) => [
                 'id'               => $p->id,
@@ -63,9 +63,12 @@ class DashboardController extends Controller
                 'created_at' => $t->created_at->toISOString(),
             ]);
 
-        // Sales trend (last 7 days)
+        // Sales trend (configurable: 7, 14, or 30 days)
+        $trendDays = in_array((int) $request->input('sales_trend_days', 7), [7, 14, 30]) 
+            ? (int) $request->input('sales_trend_days', 7) 
+            : 7;
         $salesTrend = SalesTransaction::where('status', 'completed')
-            ->where('created_at', '>=', now()->subDays(7))
+            ->where('created_at', '>=', now()->subDays($trendDays))
             ->select(
                 DB::raw('DATE(created_at) as date'),
                 DB::raw('SUM(total_amount) as total'),

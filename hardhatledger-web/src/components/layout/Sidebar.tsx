@@ -1,12 +1,12 @@
 import { NavLink } from 'react-router-dom';
-import { HiHome, HiCube, HiShoppingCart, HiDocumentReport, HiUserGroup, HiTruck, HiCollection, HiClipboardList, HiChartBar, HiCash, HiDocumentText, HiShieldCheck, HiTag, HiX } from 'react-icons/hi';
+import { HiHome, HiCube, HiShoppingCart, HiDocumentReport, HiUserGroup, HiTruck, HiCollection, HiClipboardList, HiChartBar, HiCash, HiDocumentText, HiShieldCheck, HiTag, HiX, HiKey } from 'react-icons/hi';
 import { useAuthStore } from '../../stores/authStore';
 
 interface NavItem {
   to: string;
   label: string;
   icon: React.ReactNode;
-  roles?: string[];
+  permission?: string;
 }
 
 interface NavGroup {
@@ -15,42 +15,42 @@ interface NavGroup {
 }
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { user, hasRole } = useAuthStore();
+  const { user, hasRole, hasPermission } = useAuthStore();
 
   const groups: NavGroup[] = [
     {
       title: 'POS',
       items: [
-        { to: '/pos', label: 'Point of Sale', icon: <HiShoppingCart className="w-5 h-5" />, roles: ['Sales Clerk', 'Admin', 'Manager', 'Super Admin'] },
-        { to: '/pos/transactions', label: 'Transactions', icon: <HiDocumentReport className="w-5 h-5" />, roles: ['Sales Clerk', 'Admin', 'Manager', 'Super Admin'] },
-        { to: '/clients', label: 'Clients', icon: <HiUserGroup className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
+        { to: '/pos', label: 'Point of Sale', icon: <HiShoppingCart className="w-5 h-5" />, permission: 'pos.access' },
+        { to: '/pos/transactions', label: 'Transactions', icon: <HiDocumentReport className="w-5 h-5" />, permission: 'pos.access' },
+        { to: '/clients', label: 'Clients', icon: <HiUserGroup className="w-5 h-5" />, permission: 'clients.view' },
       ],
     },
     {
       title: 'Inventory',
       items: [
-        { to: '/inventory', label: 'Products', icon: <HiCube className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
-        { to: '/inventory/categories', label: 'Categories', icon: <HiCollection className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
-        { to: '/inventory/stock', label: 'Stock Levels', icon: <HiClipboardList className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
-        { to: '/inventory/movements', label: 'Stock Movements', icon: <HiDocumentReport className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },
-        { to: '/inventory/pricing', label: 'Tier Pricing', icon: <HiTag className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
-        { to: '/purchase-orders', label: 'Purchase Orders', icon: <HiDocumentText className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },
-        { to: '/suppliers', label: 'Suppliers', icon: <HiTruck className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },
+        { to: '/inventory', label: 'Products', icon: <HiCube className="w-5 h-5" />, permission: 'products.view' },
+        { to: '/inventory/categories', label: 'Categories', icon: <HiCollection className="w-5 h-5" />, permission: 'categories.view' },
+        { to: '/inventory/stock', label: 'Stock Levels', icon: <HiClipboardList className="w-5 h-5" />, permission: 'inventory.view' },
+        { to: '/inventory/movements', label: 'Stock Movements', icon: <HiDocumentReport className="w-5 h-5" />, permission: 'inventory.view' },
+        { to: '/inventory/pricing', label: 'Tier Pricing', icon: <HiTag className="w-5 h-5" />, permission: 'products.edit' },
+        { to: '/purchase-orders', label: 'Purchase Orders', icon: <HiDocumentText className="w-5 h-5" />, permission: 'purchase-orders.view' },
+        { to: '/suppliers', label: 'Suppliers', icon: <HiTruck className="w-5 h-5" />, permission: 'suppliers.view' },
       ],
     },
     {
       title: 'Accounting',
       items: [
-        { to: '/accounting', label: 'Overview', icon: <HiCash className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },
-        { to: '/accounting/journal', label: 'Journal Entries', icon: <HiDocumentReport className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },
-        { to: '/accounting/reports/income', label: 'Reports', icon: <HiChartBar className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },
+        { to: '/accounting', label: 'Overview', icon: <HiCash className="w-5 h-5" />, permission: 'accounting.view' },
+        { to: '/accounting/journal', label: 'Journal Entries', icon: <HiDocumentReport className="w-5 h-5" />, permission: 'accounting.view' },
+        { to: '/accounting/reports/income', label: 'Reports', icon: <HiChartBar className="w-5 h-5" />, permission: 'accounting.view' },
       ],
     },
   ];
 
   const isVisible = (item: NavItem) => {
-    if (!item.roles) return true;
-    return item.roles.some((role) => hasRole(role));
+    if (!item.permission) return true;
+    return hasPermission(item.permission);
   };
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -117,7 +117,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             );
           })}
 
-          {hasRole('Super Admin') || hasRole('Manager') ? (
+          {hasPermission('users.view') && (
             <div>
               <p className="neu-sidebar-section">Admin</p>
               <div className="space-y-0.5">
@@ -125,9 +125,15 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                   <HiShieldCheck className="w-5 h-5" />
                   User Management
                 </NavLink>
+                {hasPermission('roles.view') && (
+                  <NavLink to="/roles" onClick={onClose} className={linkClass}>
+                    <HiKey className="w-5 h-5" />
+                    Role Management
+                  </NavLink>
+                )}
               </div>
             </div>
-          ) : null}
+          )}
         </nav>
 
         {/* User footer */}

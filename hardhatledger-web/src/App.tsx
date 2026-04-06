@@ -21,6 +21,7 @@ import { BalanceSheetPage } from './modules/accounting/pages/BalanceSheetPage';
 import { CashFlowPage } from './modules/accounting/pages/CashFlowPage';
 import { ClientStatementsPage } from './modules/accounting/pages/ClientStatementsPage';
 import { UsersPage } from './modules/users/pages/UsersPage';
+import { RoleManagementPage } from './modules/roles/pages/RoleManagementPage';
 import { useEffect } from 'react';
 
 function App() {
@@ -39,31 +40,32 @@ function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
 
           {/* Inventory */}
-          <Route path="/inventory" element={<ProductsPage />} />
-          <Route path="/inventory/categories" element={<CategoriesPage />} />
-          <Route path="/inventory/stock" element={<StockPage />} />
-          <Route path="/inventory/movements" element={<MovementsPage />} />
-          <Route path="/inventory/pricing" element={<TierPricingPage />} />
+          <Route path="/inventory" element={<ProtectedRoute permission="products.view"><ProductsPage /></ProtectedRoute>} />
+          <Route path="/inventory/categories" element={<ProtectedRoute permission="categories.view"><CategoriesPage /></ProtectedRoute>} />
+          <Route path="/inventory/stock" element={<ProtectedRoute permission="inventory.view"><StockPage /></ProtectedRoute>} />
+          <Route path="/inventory/movements" element={<ProtectedRoute permission="inventory.view"><MovementsPage /></ProtectedRoute>} />
+          <Route path="/inventory/pricing" element={<ProtectedRoute permission="products.edit"><TierPricingPage /></ProtectedRoute>} />
 
           {/* POS */}
-          <Route path="/pos" element={<POSPage />} />
-          <Route path="/pos/transactions" element={<TransactionsPage />} />
-          <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+          <Route path="/pos" element={<ProtectedRoute permission="pos.access"><POSPage /></ProtectedRoute>} />
+          <Route path="/pos/transactions" element={<ProtectedRoute permission="pos.access"><TransactionsPage /></ProtectedRoute>} />
+          <Route path="/purchase-orders" element={<ProtectedRoute permission="purchase-orders.view"><PurchaseOrdersPage /></ProtectedRoute>} />
 
           {/* Clients & Suppliers */}
-          <Route path="/clients" element={<ClientsPage />} />
-          <Route path="/suppliers" element={<SuppliersPage />} />
+          <Route path="/clients" element={<ProtectedRoute permission="clients.view"><ClientsPage /></ProtectedRoute>} />
+          <Route path="/suppliers" element={<ProtectedRoute permission="suppliers.view"><SuppliersPage /></ProtectedRoute>} />
 
-          {/* Users */}
-          <Route path="/users" element={<UsersPage />} />
+          {/* Users & Roles */}
+          <Route path="/users" element={<ProtectedRoute permission="users.view"><UsersPage /></ProtectedRoute>} />
+          <Route path="/roles" element={<ProtectedRoute permission="roles.view"><RoleManagementPage /></ProtectedRoute>} />
 
           {/* Accounting */}
-          <Route path="/accounting" element={<AccountingDashboard />} />
-          <Route path="/accounting/journal" element={<JournalEntriesPage />} />
-          <Route path="/accounting/reports/income" element={<IncomeStatementPage />} />
-          <Route path="/accounting/reports/balance-sheet" element={<BalanceSheetPage />} />
-          <Route path="/accounting/reports/cash-flow" element={<CashFlowPage />} />
-          <Route path="/accounting/reports/client-statements" element={<ClientStatementsPage />} />
+          <Route path="/accounting" element={<ProtectedRoute permission="accounting.view"><AccountingDashboard /></ProtectedRoute>} />
+          <Route path="/accounting/journal" element={<ProtectedRoute permission="accounting.view"><JournalEntriesPage /></ProtectedRoute>} />
+          <Route path="/accounting/reports/income" element={<ProtectedRoute permission="accounting.view"><IncomeStatementPage /></ProtectedRoute>} />
+          <Route path="/accounting/reports/balance-sheet" element={<ProtectedRoute permission="accounting.view"><BalanceSheetPage /></ProtectedRoute>} />
+          <Route path="/accounting/reports/cash-flow" element={<ProtectedRoute permission="accounting.view"><CashFlowPage /></ProtectedRoute>} />
+          <Route path="/accounting/reports/client-statements" element={<ProtectedRoute permission="accounting.view"><ClientStatementsPage /></ProtectedRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

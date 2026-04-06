@@ -835,6 +835,71 @@ body {
   transform: translateX(24px);
 }
 
+/* ── PERMISSION TOGGLE ────────────────────────────────────────────────── */
+.neu-perm-toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--n-inset);
+  box-shadow:
+    inset 2px 2px 4px var(--n-shadow-dark-sm),
+    inset -2px -2px 4px var(--n-shadow-light-sm);
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  transition: background 0.3s ease;
+  flex-shrink: 0;
+}
+
+.neu-perm-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.neu-perm-toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--n-text-dim);
+  box-shadow: 1px 1px 3px var(--n-shadow-dark-sm);
+  transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55),
+              background 0.3s ease;
+}
+
+.neu-perm-toggle--on .neu-perm-toggle-knob {
+  transform: translateX(20px);
+  background: linear-gradient(135deg, var(--n-accent), var(--n-accent-hover));
+}
+
+.neu-perm-toggle--partial .neu-perm-toggle-knob {
+  transform: translateX(10px);
+  background: linear-gradient(135deg, var(--n-accent), var(--n-accent-hover));
+  opacity: 0.6;
+}
+
+/* Small variant for individual permissions */
+.neu-perm-toggle--sm {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+}
+
+.neu-perm-toggle--sm .neu-perm-toggle-knob {
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+}
+
+.neu-perm-toggle--sm.neu-perm-toggle--on .neu-perm-toggle-knob {
+  transform: translateX(16px);
+}
+
 /* ── STAT CARD ICON ───────────────────────────────────────────────────── */
 .neu-stat-icon {
   display: flex;

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\PosController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,6 +34,18 @@ Route::prefix('v1')->group(function () {
         // User Management (Super Admin only)
         Route::middleware('permission:users.view')->group(function () {
             Route::apiResource('users', UserController::class);
+        });
+
+        // Role Management
+        Route::middleware('permission:roles.view')->group(function () {
+            Route::get('/roles', [RoleController::class, 'index']);
+            Route::get('/roles/permissions', [RoleController::class, 'permissions']);
+            Route::get('/roles/{role}', [RoleController::class, 'show']);
+        });
+        Route::middleware('permission:roles.manage')->group(function () {
+            Route::post('/roles', [RoleController::class, 'store']);
+            Route::put('/roles/{role}', [RoleController::class, 'update']);
+            Route::delete('/roles/{role}', [RoleController::class, 'destroy']);
         });
 
         // Client Tiers

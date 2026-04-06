@@ -345,26 +345,101 @@ interface TrendPoint {
   count: number;
 }
 
-function SalesTrendChart({ data }: { data: TrendPoint[] }) {
-  const max = Math.max(...data.map((d) => d.total), 1);
+type TrendPeriod = 7 | 14 | 30;
+
+const TREND_PERIODS: { value: TrendPeriod; label: string }[] = [
+  { value: 7, label: '7D' },
+  { value: 14, label: '14D' },
+  { value: 30, label: '30D' },
+];
+
+function PeriodToggle({ active, onChange }: { active: TrendPeriod; onChange: (p: TrendPeriod) => void }) {
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        background: 'var(--n-inset)',
+        borderRadius: 8,
+        padding: 2,
+        gap: 2,
+      }}
+    >
+      {TREND_PERIODS.map((p) => (
+        <button
+          key={p.value}
+          onClick={() => onChange(p.value)}
+          style={{
+            padding: '4px 10px',
+            fontSize: '0.7rem',
+            fontWeight: 600,
+            fontFamily: 'var(--n-font-mono)',
+            letterSpacing: '0.04em',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            color: active === p.value ? 'var(--n-text)' : 'var(--n-text-dim)',
+            background: active === p.value ? 'var(--n-surface)' : 'transparent',
+            boxShadow: active === p.value ? 'var(--n-shadow-sm)' : 'none',
+          }}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SalesTrendChart({ data: initialData }: { data: TrendPoint[] }) {
+  const [period, setPeriod] = useState<TrendPeriod>(7);
+  const [fetchedData, setFetchedData] = useState<TrendPoint[] | null>(null);
+  const [loadingTrend, setLoadingTrend] = useState(false);
+
+  // When period is 7, use parent data directly; otherwise use fetched data
+  const trendData = period === 7 ? initialData : (fetchedData ?? initialData);
+
+  const handlePeriodChange = useCallback((newPeriod: TrendPeriod) => {
+    setPeriod(newPeriod);
+    if (newPeriod === 7) {
+      setFetchedData(null);
+      return;
+    }
+    setLoadingTrend(true);
+    api
+      .get<DashboardSummary>('/dashboard', { params: { sales_trend_days: newPeriod } })
+      .then((res) => setFetchedData(res.data.sales_trend))
+      .catch(() => {})
+      .finally(() => setLoadingTrend(false));
+  }, []);
+
+  const max = Math.max(...trendData.map((d) => d.total), 1);
 
   return (
     <Card className="p-6">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <h2 className="neu-section-title" style={{ margin: 0 }}>Sales Trend</h2>
           <p style={{ fontSize: '0.72rem', color: 'var(--n-text-secondary)', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Last 7 days · completed orders
+            Last {period} days · completed orders
           </p>
         </div>
-        <div className="neu-stat-icon" style={{ color: 'var(--n-accent)', background: 'var(--n-accent-glow)', width: 32, height: 32, borderRadius: 10 }} aria-hidden="true">
-          <HiTrendingUp style={{ width: 16, height: 16 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <PeriodToggle active={period} onChange={handlePeriodChange} />
+          <div className="neu-stat-icon" style={{ color: 'var(--n-accent)', background: 'var(--n-accent-glow)', width: 32, height: 32, borderRadius: 10 }} aria-hidden="true">
+            <HiTrendingUp style={{ width: 16, height: 16 }} />
+          </div>
         </div>
       </div>
 
-      <div aria-label="Sales trend chart for the last 7 days">
+      <div aria-label={`Sales trend chart for the last ${period} days`} style={{ position: 'relative' }}>
+        {loadingTrend && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.15)', borderRadius: 8, zIndex: 2 }}>
+            <Spinner size="sm" />
+          </div>
+        )}
         <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <AreaChart data={trendData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#F5A623" stopOpacity={0.35} />
@@ -880,6 +955,11 @@ function getSeverity(onHand: number, reorder: number): { color: string; label: s
 }
 
 function LowStockPanel({ items, totalCount }: { items: LowStockItem[]; totalCount: number }) {
+  const PAGE_SIZE = 4;
+  const [page, setPage] = useState(0);
+  const totalPages = Math.ceil(items.length / PAGE_SIZE);
+  const pageItems = items.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
   return (
     <Card className="p-6 flex flex-col flex-1">
       {/* header — fixed, never scrolls */}
@@ -901,94 +981,143 @@ function LowStockPanel({ items, totalCount }: { items: LowStockItem[]; totalCoun
         )}
       </div>
 
-      {/* scrollable list — fills remaining card height */}
+      {/* list — fixed 4 items */}
       {items.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--n-text-dim)', fontSize: '0.8125rem' }}>
           All products above reorder level
         </div>
       ) : (
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            paddingRight: 4,
-            /* custom scrollbar to match design system */
-            scrollbarWidth: 'thin',
-            scrollbarColor: 'var(--n-scrollbar-thumb) transparent',
-          }}
-        >
-          {items.map((item, i) => {
-            const severity = getSeverity(item.quantity_on_hand, item.reorder_level);
-            const pct = item.reorder_level > 0
-              ? Math.min((item.quantity_on_hand / item.reorder_level) * 100, 100)
-              : 0;
+        <>
+          <div style={{ flex: 1 }}>
+            {pageItems.map((item, i) => {
+              const severity = getSeverity(item.quantity_on_hand, item.reorder_level);
+              const pct = item.reorder_level > 0
+                ? Math.min((item.quantity_on_hand / item.reorder_level) * 100, 100)
+                : 0;
 
-            return (
-              <div
-                key={item.id}
-                style={{
-                  padding: '0.5rem 0',
-                  borderBottom: i < items.length - 1 ? '1px solid var(--n-divider)' : 'none',
-                }}
-              >
-                {/* name + badge */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
-                  <span
-                    title={item.name}
-                    style={{
-                      fontSize: '0.8125rem',
-                      fontWeight: 600,
-                      color: 'var(--n-text)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      maxWidth: '55%',
-                    }}
-                  >
-                    {item.name}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '0.6875rem',
-                      fontWeight: 600,
-                      color: severity.color,
-                      background: `color-mix(in srgb, ${severity.color} 12%, transparent)`,
-                      padding: '0.125rem 0.5rem',
-                      borderRadius: 6,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {severity.label}
-                  </span>
-                </div>
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    padding: '0.5rem 0',
+                    borderBottom: i < pageItems.length - 1 ? '1px solid var(--n-divider)' : 'none',
+                  }}
+                >
+                  {/* name + badge */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
+                    <span
+                      title={item.name}
+                      style={{
+                        fontSize: '0.8125rem',
+                        fontWeight: 600,
+                        color: 'var(--n-text)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: '55%',
+                      }}
+                    >
+                      {item.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '0.6875rem',
+                        fontWeight: 600,
+                        color: severity.color,
+                        background: `color-mix(in srgb, ${severity.color} 12%, transparent)`,
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: 6,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {severity.label}
+                    </span>
+                  </div>
 
-                {/* progress bar */}
-                <div style={{ height: 4, borderRadius: 4, background: 'var(--n-divider)', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      height: '100%',
-                      width: `${pct}%`,
-                      background: severity.color,
-                      borderRadius: 4,
-                      transition: 'width 0.6s ease',
-                    }}
-                  />
-                </div>
+                  {/* progress bar */}
+                  <div style={{ height: 4, borderRadius: 4, background: 'var(--n-divider)', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${pct}%`,
+                        background: severity.color,
+                        borderRadius: 4,
+                        transition: 'width 0.6s ease',
+                      }}
+                    />
+                  </div>
 
-                {/* sku + qty */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
-                  <span style={{ fontSize: '0.625rem', fontFamily: 'var(--n-font-mono)', color: 'var(--n-text-dim)' }}>
-                    {item.sku}
-                  </span>
-                  <span style={{ fontSize: '0.625rem', fontFamily: 'var(--n-font-mono)', color: 'var(--n-text-secondary)' }}>
-                    {item.quantity_on_hand} / {item.reorder_level}
-                  </span>
+                  {/* sku + qty */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                    <span style={{ fontSize: '0.625rem', fontFamily: 'var(--n-font-mono)', color: 'var(--n-text-dim)' }}>
+                      {item.sku}
+                    </span>
+                    <span style={{ fontSize: '0.625rem', fontFamily: 'var(--n-font-mono)', color: 'var(--n-text-secondary)' }}>
+                      {item.quantity_on_hand} / {item.reorder_level}
+                    </span>
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+
+          {/* pagination */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--n-divider)', flexShrink: 0 }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--n-text-dim)', fontFamily: 'var(--n-font-mono)' }}>
+                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, items.length)} of {items.length}
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => setPage((p) => p - 1)}
+                  disabled={page === 0}
+                  aria-label="Previous page"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    border: '1px solid var(--n-divider)',
+                    background: 'var(--n-surface)',
+                    color: page === 0 ? 'var(--n-text-dim)' : 'var(--n-text)',
+                    cursor: page === 0 ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: page === 0 ? 0.4 : 1,
+                    transition: 'opacity 0.15s ease',
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path d="M7.5 9L4.5 6L7.5 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={page >= totalPages - 1}
+                  aria-label="Next page"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    border: '1px solid var(--n-divider)',
+                    background: 'var(--n-surface)',
+                    color: page >= totalPages - 1 ? 'var(--n-text-dim)' : 'var(--n-text)',
+                    cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: page >= totalPages - 1 ? 0.4 : 1,
+                    transition: 'opacity 0.15s ease',
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          )}
+        </>
       )}
     </Card>
   );
@@ -1132,6 +1261,7 @@ export function DashboardPage() {
 
       {/* ── KPI Strip ── */}
       <div
+        className="dash-kpi-grid"
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -1153,6 +1283,7 @@ export function DashboardPage() {
 
       {/* ── Main + Secondary unified grid ── */}
       <div
+        className="dash-main-grid"
         style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr 1fr',
@@ -1162,22 +1293,22 @@ export function DashboardPage() {
         }}
       >
         {/* row 1 col 1-2: Sales Trend */}
-        <div style={{ gridColumn: '1 / 3', gridRow: '1' }}>
+        <div className="dash-sales-trend" style={{ gridColumn: '1 / 3', gridRow: '1' }}>
           <SalesTrendChart data={data.sales_trend} />
         </div>
 
         {/* row 1 col 3: Business Health */}
-        <div style={{ gridColumn: '3', gridRow: '1' }}>
+        <div className="dash-biz-health" style={{ gridColumn: '3', gridRow: '1' }}>
           <BusinessHealthPanel data={data} />
         </div>
 
         {/* row 2 col 1: Transaction Mix */}
-        <div style={{ gridColumn: '1', gridRow: '2' }}>
+        <div className="dash-tx-mix" style={{ gridColumn: '1', gridRow: '2' }}>
           <FulfillmentMiniChart transactions={data.recent_transactions} />
         </div>
 
         {/* row 2 col 2: Low Stock Alerts */}
-        <div style={{ gridColumn: '2', gridRow: '2', display: 'flex', flexDirection: 'column' }}>
+        <div className="dash-low-stock" style={{ gridColumn: '2', gridRow: '2', display: 'flex', flexDirection: 'column' }}>
           <LowStockPanel
             items={data.low_stock_items}
             totalCount={data.low_stock_count}
@@ -1185,7 +1316,7 @@ export function DashboardPage() {
         </div>
 
         {/* row 2 col 3: Business Overview */}
-        <div style={{ gridColumn: '3', gridRow: '2', display: 'flex', flexDirection: 'column' }}>
+        <div className="dash-biz-overview" style={{ gridColumn: '3', gridRow: '2', display: 'flex', flexDirection: 'column', alignSelf: 'flex-start' }}>
           <BusinessOverviewCard
             totalProducts={data.total_products}
             totalClients={data.total_clients}
@@ -1202,7 +1333,47 @@ export function DashboardPage() {
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+          to   { transform: rotate(360deg); }
+        }
+
+        /* ── Tablet (≤ 1023px): 2-column layout ── */
+        @media (max-width: 1023px) {
+          .dash-main-grid {
+            grid-template-columns: 1fr 1fr !important;
+            grid-template-rows: none !important;
+          }
+          .dash-sales-trend {
+            grid-column: 1 / -1 !important;
+            grid-row: auto !important;
+          }
+          .dash-biz-health,
+          .dash-tx-mix,
+          .dash-low-stock,
+          .dash-biz-overview {
+            grid-column: auto !important;
+            grid-row: auto !important;
+            align-self: auto !important;
+          }
+        }
+
+        /* ── Mobile (≤ 639px): single-column layout ── */
+        @media (max-width: 639px) {
+          .dash-kpi-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+          .dash-main-grid {
+            grid-template-columns: 1fr !important;
+            grid-template-rows: none !important;
+          }
+          .dash-sales-trend,
+          .dash-biz-health,
+          .dash-tx-mix,
+          .dash-low-stock,
+          .dash-biz-overview {
+            grid-column: 1 !important;
+            grid-row: auto !important;
+            align-self: auto !important;
+          }
         }
       `}</style>
     </div>
