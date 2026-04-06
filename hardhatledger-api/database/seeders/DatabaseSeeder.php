@@ -12,6 +12,7 @@ class DatabaseSeeder extends Seeder
             RoleAndPermissionSeeder::class,
             ChartOfAccountSeeder::class,
             DefaultDataSeeder::class,
+            ProductCatalogSeeder::class,
         ]);
     }
 }

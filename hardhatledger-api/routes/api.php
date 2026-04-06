@@ -74,10 +74,16 @@ Route::prefix('v1')->group(function () {
         // Products
         Route::middleware('permission:products.view')->group(function () {
             Route::get('/products', [ProductController::class, 'index']);
+            Route::get('/products/export/pdf', [ProductController::class, 'exportPdf']);
+            Route::get('/products/export/csv', [ProductController::class, 'exportCsv']);
+            Route::get('/products/export/xlsx', [ProductController::class, 'exportXlsx']);
             Route::get('/products/{product}', [ProductController::class, 'show']);
             Route::get('/products/{product}/price', [ProductController::class, 'getPrice']);
         });
-        Route::middleware('permission:products.create')->post('/products', [ProductController::class, 'store']);
+        Route::middleware('permission:products.create')->group(function () {
+            Route::post('/products', [ProductController::class, 'store']);
+            Route::post('/products/import', [ProductController::class, 'import']);
+        });
         Route::middleware('permission:products.edit')->put('/products/{product}', [ProductController::class, 'update']);
         Route::middleware('permission:products.delete')->delete('/products/{product}', [ProductController::class, 'destroy']);
 
