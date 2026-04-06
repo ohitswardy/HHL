@@ -25,7 +25,8 @@ class StoreSaleRequest extends FormRequest
             'payments.*.amount' => ['required', 'numeric', 'min:0.01'],
             'payments.*.reference_number' => ['nullable', 'string'],
             'fulfillment_type' => ['required', Rule::in(['pickup', 'delivery'])],
-            'notes' => ['nullable', 'string'],
+            'delivery_fee'     => ['nullable', 'numeric', 'min:0'],
+            'notes'            => ['nullable', 'string'],
         ];
     }
 }

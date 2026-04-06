@@ -153,11 +153,31 @@ class ProductController extends Controller
         ]);
     }
 
-    public function exportPdf(): \Illuminate\Http\Response
+    private function buildExportQuery(Request $request)
     {
-        $products = Product::with(['category', 'stock'])
-            ->orderBy('name')
-            ->get();
+        $query = Product::with(['category', 'stock'])->orderBy('name');
+
+        if ($search = $request->get('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('sku', 'like', "%{$search}%");
+            });
+        }
+
+        if ($categoryId = $request->get('category_id')) {
+            $query->where('category_id', $categoryId);
+        }
+
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+
+        return $query;
+    }
+
+    public function exportPdf(Request $request): \Illuminate\Http\Response
+    {
+        $products = $this->buildExportQuery($request)->get();
 
         $pdf = Pdf::loadView('products.export', [
             'products' => $products,
@@ -168,11 +188,9 @@ class ProductController extends Controller
         return $pdf->download('products-' . now()->format('Y-m-d') . '.pdf');
     }
 
-    public function exportCsv(): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function exportCsv(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $products = Product::with(['category', 'stock'])
-            ->orderBy('name')
-            ->get();
+        $products = $this->buildExportQuery($request)->get();
 
         $filename = 'products-' . now()->format('Y-m-d') . '.csv';
 
@@ -200,16 +218,14 @@ class ProductController extends Controller
         ]);
     }
 
-    public function exportXlsx(): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    public function exportXlsx(Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse
     {
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $spreadsheet->removeSheetByIndex(0); // remove default blank sheet
 
         $headers = ['SKU', 'Name', 'Unit', 'Cost Price', 'Selling Price', 'Stock', 'Reorder Level', 'Status'];
 
-        $products = Product::with(['category', 'stock'])
-            ->orderBy('name')
-            ->get();
+        $products = $this->buildExportQuery($request)->get();
 
         $grouped = $products->groupBy(fn ($p) => $p->category?->name ?? 'Uncategorized');
         $grouped->prepend($products, 'All Products');
@@ -302,6 +318,7 @@ class ProductController extends Controller
                 $name   = trim($row['name'] ?? '');
 
                 if (empty($name)) {
+                    $errors[] = "Row {$rowNum}: missing 'name' — skipped.";
                     $skipped++;
                     continue;
                 }
@@ -381,6 +398,13 @@ class ProductController extends Controller
         ]);
     }
 
+    private function normalizeHeader(string $h): string
+    {
+        // Strip UTF-8 BOM that Excel/spreadsheet apps sometimes prepend to the first cell
+        $h = preg_replace('/^\xEF\xBB\xBF/', '', $h);
+        return strtolower(trim(str_replace([' ', '-'], '_', $h)));
+    }
+
     private function parseFlatFile(string $path, string $delimiter): array
     {
         $rows   = [];
@@ -392,10 +416,11 @@ class ProductController extends Controller
         $headers = null;
         while (($line = fgetcsv($handle, 0, $delimiter)) !== false) {
             if ($headers === null) {
-                $headers = array_map(
-                    fn($h) => strtolower(trim(str_replace([' ', '-'], '_', $h))),
-                    $line
-                );
+                $headers = array_map(fn($h) => $this->normalizeHeader($h), $line);
+                continue;
+            }
+            // Skip completely blank rows
+            if (empty(array_filter($line, fn($v) => trim((string) $v) !== ''))) {
                 continue;
             }
             if (count($line) < count($headers)) {
@@ -418,7 +443,7 @@ class ProductController extends Controller
         }
 
         $headers = array_map(
-            fn($h) => strtolower(trim(str_replace([' ', '-'], '_', (string) $h))),
+            fn($h) => $this->normalizeHeader((string) $h),
             array_shift($data)
         );
 

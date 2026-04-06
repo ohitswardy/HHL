@@ -18,6 +18,7 @@ class SalesTransaction extends Model
         'status',
         'subtotal',
         'discount_amount',
+        'delivery_fee',
         'tax_amount',
         'total_amount',
         'notes',
@@ -27,10 +28,11 @@ class SalesTransaction extends Model
     protected function casts(): array
     {
         return [
-            'subtotal' => 'decimal:2',
-            'discount_amount' => 'decimal:2',
-            'tax_amount' => 'decimal:2',
-            'total_amount' => 'decimal:2',
+            'subtotal'       => 'decimal:2',
+            'discount_amount'=> 'decimal:2',
+            'delivery_fee'   => 'decimal:2',
+            'tax_amount'     => 'decimal:2',
+            'total_amount'   => 'decimal:2',
         ];
     }
 

@@ -36,6 +36,7 @@ export interface Category {
   id: number;
   name: string;
   parent_id: number | null;
+  products_count?: number;
   children?: Category[];
 }
 
@@ -151,6 +152,7 @@ export interface SalesTransaction {
   status: 'pending' | 'completed' | 'voided' | 'refunded';
   subtotal: number;
   discount_amount: number;
+  delivery_fee: number;
   tax_amount: number;
   total_amount: number;
   total_paid: number;

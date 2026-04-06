@@ -30,8 +30,9 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
       title: 'Inventory',
       items: [
         { to: '/inventory', label: 'Products', icon: <HiCube className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
-        { to: '/inventory/stock', label: 'Stock Levels', icon: <HiCollection className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
-        { to: '/inventory/movements', label: 'Stock Movements', icon: <HiClipboardList className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },
+        { to: '/inventory/categories', label: 'Categories', icon: <HiCollection className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
+        { to: '/inventory/stock', label: 'Stock Levels', icon: <HiClipboardList className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
+        { to: '/inventory/movements', label: 'Stock Movements', icon: <HiDocumentReport className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },
         { to: '/inventory/pricing', label: 'Tier Pricing', icon: <HiTag className="w-5 h-5" />, roles: ['Admin', 'Manager', 'Super Admin'] },
         { to: '/purchase-orders', label: 'Purchase Orders', icon: <HiDocumentText className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },
         { to: '/suppliers', label: 'Suppliers', icon: <HiTruck className="w-5 h-5" />, roles: ['Manager', 'Super Admin'] },

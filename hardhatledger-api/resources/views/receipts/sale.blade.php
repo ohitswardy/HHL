@@ -90,6 +90,12 @@
             <td class="right">-{{ number_format($sale->discount_amount, 2) }}</td>
         </tr>
         @endif
+        @if($sale->delivery_fee > 0)
+        <tr>
+            <td>Delivery Fee</td>
+            <td class="right">{{ number_format($sale->delivery_fee, 2) }}</td>
+        </tr>
+        @endif
         <tr>
             <td class="bold" style="font-size:13px; padding-top:5px">TOTAL</td>
             <td class="right bold" style="font-size:13px; padding-top:5px">{{ number_format($sale->total_amount, 2) }}</td>

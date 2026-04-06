@@ -65,7 +65,22 @@ export function ProductsPage() {
     api.get('/suppliers', { params: { per_page: 100 } }).then((res) => setSuppliers(res.data.data));
   }, []);
 
-  const flatCategories = categories.flatMap((c: Category & { children?: Category[] }) => [c, ...(c.children || [])]);
+  // Flat list for the filter bar (plain names)
+  const flatCategories = categories.flatMap((c) => [c, ...(c.children || [])]);
+
+  // Structured list for the modal category dropdown — shows parent/sub-category hierarchy
+  const categoryOptions = categories.flatMap((parent) => {
+    const isParent = (parent.children?.length ?? 0) > 0;
+    const parentEntry = {
+      value: String(parent.id),
+      label: isParent ? `📁 ${parent.name}` : parent.name,
+    };
+    const childEntries = (parent.children || []).map((child) => ({
+      value: String(child.id),
+      label: `    ↳ ${child.name}  (${parent.name})`,
+    }));
+    return [parentEntry, ...childEntries];
+  });
 
   // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -90,10 +105,18 @@ export function ProductsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const buildExportParams = () => {
+    const params: Record<string, unknown> = {};
+    if (search) params.search = search;
+    if (filterCategory) params.category_id = filterCategory;
+    if (filterStatus !== 'all') params.is_active = filterStatus === 'active' ? 1 : 0;
+    return params;
+  };
+
   const handleExportPdf = async () => {
     setExportOpen(false); setExporting(true);
     try {
-      const res = await api.get('/products/export/pdf', { responseType: 'blob' });
+      const res = await api.get('/products/export/pdf', { responseType: 'blob', params: buildExportParams() });
       downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `products-${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch { toast.error('Failed to export PDF'); }
     finally { setExporting(false); }
@@ -102,7 +125,7 @@ export function ProductsPage() {
   const handleExportCsv = async () => {
     setExportOpen(false); setExporting(true);
     try {
-      const res = await api.get('/products/export/csv', { responseType: 'blob' });
+      const res = await api.get('/products/export/csv', { responseType: 'blob', params: buildExportParams() });
       downloadBlob(new Blob([res.data], { type: 'text/csv' }), `products-${new Date().toISOString().slice(0, 10)}.csv`);
     } catch { toast.error('Failed to export CSV'); }
     finally { setExporting(false); }
@@ -111,7 +134,7 @@ export function ProductsPage() {
   const handleExportXlsx = async () => {
     setExportOpen(false); setExporting(true);
     try {
-      const res = await api.get('/products/export/xlsx', { responseType: 'blob' });
+      const res = await api.get('/products/export/xlsx', { responseType: 'blob', params: buildExportParams() });
       downloadBlob(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `products-${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch { toast.error('Failed to export XLSX'); }
     finally { setExporting(false); }
@@ -366,15 +389,14 @@ export function ProductsPage() {
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
             Upload a <strong>.csv</strong>, <strong>.tsv</strong>, or <strong>.xlsx</strong> file.
-            The first row must be a header row. Recognized columns:
+            The first row must be a header row. Include only the columns you have — all are optional except <code>name</code>:
           </p>
           <div className="bg-gray-50 rounded-lg p-3 text-xs font-mono text-gray-700 leading-relaxed">
             name, sku, category, unit, cost_price, retail_price, wholesale_price, reorder_level, description
           </div>
-          <div className="text-xs text-gray-500">
-            <span className="font-semibold text-amber-600">Required:</span> <code>name</code>.
-            SKU is auto-generated (IMP-XXXX) if omitted.
-            Rows with duplicate SKUs are skipped.
+          <div className="text-xs text-gray-500 space-y-0.5">
+            <div><span className="font-semibold text-amber-600">Required:</span> <code>name</code>. All other columns are optional and can be omitted.</div>
+            <div>SKU is auto-generated (IMP-XXXX) if omitted. Rows with duplicate SKUs are skipped.</div>
           </div>
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Select file</span>
@@ -416,7 +438,7 @@ export function ProductsPage() {
         <div className="grid grid-cols-2 gap-4">
           <Input label="Product Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           <Input label="SKU" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} required />
-          <Select label="Category" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })} options={flatCategories.map((c) => ({ value: c.id, label: c.name }))} placeholder="Select category" />
+          <Select label="Category" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })} options={categoryOptions} placeholder="Select category" />
           <Select label="Supplier" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })} options={suppliers.map((s) => ({ value: s.id, label: s.name }))} placeholder="Select supplier" />
           <Input label="Unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} />
           <Input label="Reorder Level" type="number" value={form.reorder_level} onChange={(e) => setForm({ ...form, reorder_level: e.target.value })} />

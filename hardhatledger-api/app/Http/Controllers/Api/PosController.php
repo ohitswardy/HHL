@@ -54,20 +54,24 @@ class PosController extends Controller
                 $discountAmount += $itemDiscount;
             }
 
-            $totalAmount = $subtotal - $discountAmount;
+            $deliveryFee = $request->fulfillment_type === 'delivery'
+                ? (float) ($request->delivery_fee ?? 0)
+                : 0;
+            $totalAmount = $subtotal - $discountAmount + $deliveryFee;
 
             // Create transaction
             $sale = SalesTransaction::create([
                 'transaction_number' => $this->transactionNumberService->generateSaleNumber(),
-                'client_id' => $client?->id,
-                'user_id' => $request->user()->id,
-                'fulfillment_type' => $request->fulfillment_type ?? 'pickup',
-                'status' => 'completed',
-                'subtotal' => $subtotal,
-                'discount_amount' => $discountAmount,
-                'tax_amount' => 0,
-                'total_amount' => $totalAmount,
-                'notes' => $request->notes,
+                'client_id'          => $client?->id,
+                'user_id'            => $request->user()->id,
+                'fulfillment_type'   => $request->fulfillment_type ?? 'pickup',
+                'status'             => 'completed',
+                'subtotal'           => $subtotal,
+                'discount_amount'    => $discountAmount,
+                'delivery_fee'       => $deliveryFee,
+                'tax_amount'         => 0,
+                'total_amount'       => $totalAmount,
+                'notes'              => $request->notes,
             ]);
 
             // Create sale items
