@@ -91,6 +91,7 @@ Route::prefix('v1')->group(function () {
         Route::middleware('permission:inventory.view')->group(function () {
             Route::get('/inventory', [InventoryController::class, 'index']);
             Route::get('/inventory/movements', [InventoryController::class, 'movements']);
+            Route::get('/inventory/movements/print', [InventoryController::class, 'printMovements']);
             Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock']);
         });
         Route::middleware('permission:inventory.adjust')->post('/inventory/adjust', [InventoryController::class, 'adjustStock']);
@@ -109,6 +110,7 @@ Route::prefix('v1')->group(function () {
                 Route::get('/sales', [PosController::class, 'index']);
                 Route::get('/sales/{sale}', [PosController::class, 'show']);
                 Route::get('/sales/{sale}/receipt', [PosController::class, 'receipt']);
+                Route::get('/reports/export', [PosController::class, 'exportReport']);
             });
             Route::middleware('permission:pos.create-sale')->post('/sales', [PosController::class, 'createSale']);
             Route::middleware('permission:pos.void-sale')->post('/sales/{sale}/void', [PosController::class, 'voidSale']);

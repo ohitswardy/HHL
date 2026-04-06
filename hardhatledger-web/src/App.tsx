@@ -9,6 +9,7 @@ import { CategoriesPage } from './modules/inventory/pages/CategoriesPage';
 import { StockPage } from './modules/inventory/pages/StockPage';
 import { MovementsPage } from './modules/inventory/pages/MovementsPage';
 import { POSPage } from './modules/pos/pages/POSPage';
+import { TransactionsPage } from './modules/pos/pages/TransactionsPage';
 import { PurchaseOrdersPage } from './modules/pos/pages/PurchaseOrdersPage';
 import { ClientsPage } from './modules/clients/pages/ClientsPage';
 import { SuppliersPage } from './modules/suppliers/pages/SuppliersPage';
@@ -44,6 +45,7 @@ function App() {
 
           {/* POS */}
           <Route path="/pos" element={<POSPage />} />
+          <Route path="/pos/transactions" element={<TransactionsPage />} />
           <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
 
           {/* Clients & Suppliers */}

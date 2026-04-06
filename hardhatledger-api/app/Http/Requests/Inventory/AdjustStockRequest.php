@@ -16,9 +16,10 @@ class AdjustStockRequest extends FormRequest
     {
         return [
             'product_id' => ['required', 'exists:products,id'],
-            'quantity' => ['required', 'integer', 'min:1'],
-            'type' => ['required', Rule::in(['in', 'out', 'adjustment'])],
-            'notes' => ['nullable', 'string', 'max:500'],
+            'quantity'   => ['required', 'integer', 'min:1'],
+            'type'       => ['required', Rule::in(['in', 'out', 'adjustment'])],
+            'unit_cost'  => ['nullable', 'numeric', 'min:0'],
+            'notes'      => ['nullable', 'string', 'max:500'],
         ];
     }
 }

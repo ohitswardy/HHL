@@ -190,7 +190,16 @@ export function POSPage() {
               {lastSale.client?.business_name || 'Walk-in Customer'} | {lastSale.fulfillment_type}
             </p>
             <div className="flex gap-3 justify-center pt-4">
-              <Button variant="outline" onClick={() => window.open(`http://localhost:8000/api/v1/pos/sales/${lastSale.id}/receipt`, '_blank')}>
+              <Button variant="outline" onClick={async () => {
+                try {
+                  const res = await api.get(`/pos/sales/${lastSale.id}/receipt`, { responseType: 'blob' });
+                  const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                  const a = document.createElement('a');
+                  a.href = url; a.download = `receipt-${lastSale.transaction_number}.pdf`; a.click();
+                  URL.revokeObjectURL(url);
+                  toast.success('Receipt downloaded');
+                } catch { toast.error('Failed to download receipt'); }
+              }}>
                 Download Receipt
               </Button>
               <Button variant="amber" onClick={() => setReceiptModal(false)}>New Sale</Button>

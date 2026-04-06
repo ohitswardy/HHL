@@ -251,4 +251,221 @@ class PosController extends Controller
 
         return $pdf->download("receipt-{$sale->transaction_number}.pdf");
     }
+
+    public function exportReport(Request $request): Response
+    {
+        $query = SalesTransaction::with(['client', 'user', 'items.product', 'payments'])
+            ->where('status', 'completed');
+
+        // Apply date filters
+        $period = $request->get('period', 'daily'); // daily, weekly, monthly
+        $date   = $request->get('date', now()->toDateString());
+        $carbon = \Illuminate\Support\Carbon::parse($date);
+
+        match ($period) {
+            'daily'   => $query->whereDate('created_at', $date),
+            'weekly'  => $query->whereBetween('created_at', [
+                            $carbon->copy()->startOfWeek()->startOfDay(),
+                            $carbon->copy()->endOfWeek()->endOfDay(),
+                         ]),
+            'monthly' => $query->whereYear('created_at', $carbon->year)
+                               ->whereMonth('created_at', $carbon->month),
+            default   => null,
+        };
+
+        $format = $request->get('format', 'pdf'); // pdf, csv, xlsx
+
+        $sales = $query->orderByDesc('created_at')->get();
+
+        return match ($format) {
+            'csv' => $this->exportCsv($sales, $period),
+            'xlsx' => $this->exportXlsx($sales, $period),
+            default => $this->exportPdf($sales, $period, $date),
+        };
+    }
+
+    private function exportCsv($sales, $period): Response
+    {
+        $filename = "transactions-{$period}-" . now()->format('Y-m-d') . '.csv';
+        $headers = [
+            'Transaction #',
+            'Date',
+            'Client',
+            'Fulfillment Type',
+            'Subtotal',
+            'Discount',
+            'Total',
+            'Payment Method',
+            'Cashier',
+        ];
+
+        $handle = fopen('php://memory', 'r+');
+        fputcsv($handle, $headers);
+
+        foreach ($sales as $sale) {
+            $paymentMethods = $sale->payments->pluck('payment_method')->join(', ');
+            fputcsv($handle, [
+                $sale->transaction_number,
+                $sale->created_at->format('Y-m-d H:i'),
+                $sale->client?->business_name ?? 'Walk-in',
+                $sale->fulfillment_type,
+                number_format($sale->subtotal, 2),
+                number_format($sale->discount_amount, 2),
+                number_format($sale->total_amount, 2),
+                $paymentMethods,
+                $sale->user?->name ?? 'Unknown',
+            ]);
+        }
+
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
+        return response($csv, 200)
+            ->header('Content-Type', 'text/csv; charset=utf-8')
+            ->header('Content-Disposition', "attachment; filename=\"$filename\"");
+    }
+
+    private function exportXlsx($sales, $period): Response
+    {
+        $filename = "transactions-{$period}-" . now()->format('Y-m-d') . '.xlsx';
+
+        $rows = [];
+        $rows[] = ['Transaction #', 'Date', 'Client', 'Fulfillment Type', 'Subtotal', 'Discount', 'Total', 'Payment Method', 'Cashier'];
+
+        foreach ($sales as $sale) {
+            $paymentMethods = $sale->payments->pluck('payment_method')->join(', ');
+            $rows[] = [
+                $sale->transaction_number,
+                $sale->created_at->format('Y-m-d H:i'),
+                $sale->client?->business_name ?? 'Walk-in',
+                $sale->fulfillment_type,
+                (float) $sale->subtotal,
+                (float) $sale->discount_amount,
+                (float) $sale->total_amount,
+                $paymentMethods,
+                $sale->user?->name ?? 'Unknown',
+            ];
+        }
+
+        $xlsx = $this->buildXlsx($rows);
+
+        return response($xlsx, 200)
+            ->header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->header('Content-Disposition', "attachment; filename=\"{$filename}\"");
+    }
+
+    /**
+     * Build a minimal but valid .xlsx binary from a 2-D array of rows.
+     * Uses only PHP's built-in ZipArchive — no Composer packages required.
+     */
+    private function buildXlsx(array $rows): string
+    {
+        // Collect all unique strings into a shared-strings table
+        $strings = [];
+        $strIndex = [];
+
+        $xmlRows = '';
+        foreach ($rows as $r => $row) {
+            $xmlRows .= '<row r="' . ($r + 1) . '">';
+            foreach ($row as $c => $value) {
+                $col = $this->xlsxColLetter($c) . ($r + 1);
+                if (is_numeric($value) && $value !== '') {
+                    $xmlRows .= "<c r=\"{$col}\"><v>{$value}</v></c>";
+                } else {
+                    $str = (string) $value;
+                    if (!isset($strIndex[$str])) {
+                        $strIndex[$str] = count($strings);
+                        $strings[] = $str;
+                    }
+                    $xmlRows .= "<c r=\"{$col}\" t=\"s\"><v>{$strIndex[$str]}</v></c>";
+                }
+            }
+            $xmlRows .= '</row>';
+        }
+
+        // Shared strings XML
+        $sst = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' . count($strings) . '" uniqueCount="' . count($strings) . '">';
+        foreach ($strings as $s) {
+            $sst .= '<si><t>' . htmlspecialchars($s, ENT_XML1, 'UTF-8') . '</t></si>';
+        }
+        $sst .= '</sst>';
+
+        // Sheet XML
+        $sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . '<sheetData>' . $xmlRows . '</sheetData>'
+            . '</worksheet>';
+
+        // Workbook XML
+        $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+            . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            . '<sheets><sheet name="Transactions" sheetId="1" r:id="rId1"/></sheets>'
+            . '</workbook>';
+
+        // Relationships
+        $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>'
+            . '</Relationships>';
+
+        $pkgRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            . '</Relationships>';
+
+        $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            . '<Default Extension="xml" ContentType="application/xml"/>'
+            . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            . '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+            . '</Types>';
+
+        // Build the zip in memory
+        $tmp = tempnam(sys_get_temp_dir(), 'xlsx_');
+        $zip = new \ZipArchive();
+        $zip->open($tmp, \ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml',         $contentTypes);
+        $zip->addFromString('_rels/.rels',                  $pkgRels);
+        $zip->addFromString('xl/workbook.xml',              $workbook);
+        $zip->addFromString('xl/_rels/workbook.xml.rels',   $wbRels);
+        $zip->addFromString('xl/worksheets/sheet1.xml',     $sheet);
+        $zip->addFromString('xl/sharedStrings.xml',         $sst);
+        $zip->close();
+
+        $binary = file_get_contents($tmp);
+        unlink($tmp);
+
+        return $binary;
+    }
+
+    private function xlsxColLetter(int $index): string
+    {
+        $letter = '';
+        $index++;
+        while ($index > 0) {
+            $index--;
+            $letter = chr(65 + ($index % 26)) . $letter;
+            $index = intdiv($index, 26);
+        }
+        return $letter;
+    }
+
+    private function exportPdf($sales, $period, $date): Response
+    {
+        $filename = "transactions-{$period}-" . now()->format('Y-m-d') . '.pdf';
+
+        $pdf = Pdf::loadView('reports.transactions', [
+            'sales' => $sales,
+            'period' => $period,
+            'date' => $date,
+        ]);
+
+        return $pdf->download($filename);
+    }
 }
