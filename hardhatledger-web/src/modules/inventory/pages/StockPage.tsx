@@ -101,8 +101,8 @@ export function StockPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-navy-dark">Stock Management</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{meta.total} products tracked</p>
+          <h1 className="neu-page-title">Stock Management</h1>
+          <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">{meta.total} products tracked</p>
         </div>
         <Button
           variant="outline"
@@ -117,8 +117,9 @@ export function StockPage() {
       {/* Low-stock banner */}
       {lowCount > 0 && filterMode !== 'low' && (
         <div
-          className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 cursor-pointer hover:bg-red-100 transition-colors"
+          className="neu-banner-danger"
           onClick={() => setFilterMode('low')}
+          style={{ cursor: 'pointer' }}
         >
           <HiExclamation className="w-5 h-5 text-red-500 shrink-0" />
           <p className="text-sm text-red-700 font-medium">
@@ -133,9 +134,9 @@ export function StockPage() {
         <div className="flex flex-wrap gap-3 items-center justify-between">
           {/* Search */}
           <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <HiSearch className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
+            <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
             <input
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
+              className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
               placeholder="Search by name or SKU…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -143,15 +144,15 @@ export function StockPage() {
           </div>
 
           {/* Filter tabs */}
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="flex gap-1 bg-[var(--n-inset)] rounded-lg p-1">
             {filterTabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setFilterMode(tab.key)}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   filterMode === tab.key
-                    ? 'bg-white text-navy-dark shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'bg-[var(--n-surface)] text-[var(--n-text)] shadow-sm'
+                    : 'text-[var(--n-text-secondary)] hover:text-[var(--n-text)]'
                 }`}
               >
                 {tab.label}
@@ -169,25 +170,25 @@ export function StockPage() {
           </div>
         ) : displayedProducts.length === 0 ? (
           <div className="py-16 text-center">
-            <p className="text-gray-400">No products found</p>
+            <p className="text-[var(--n-text-dim)]">No products found</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="neu-table">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Product</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">SKU</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Category</th>
-                  <th className="text-center px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">On Hand</th>
-                  <th className="text-center px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Reserved</th>
-                  <th className="text-center px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Available</th>
-                  <th className="text-center px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Reorder At</th>
-                  <th className="text-center px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Status</th>
-                  <th className="text-center px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Action</th>
+                <tr className="">
+                  <th className="text-left px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Product</th>
+                  <th className="text-left px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">SKU</th>
+                  <th className="text-left px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Category</th>
+                  <th className="text-center px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">On Hand</th>
+                  <th className="text-center px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Reserved</th>
+                  <th className="text-center px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Available</th>
+                  <th className="text-center px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Reorder At</th>
+                  <th className="text-center px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Status</th>
+                  <th className="text-center px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {displayedProducts.map((p) => {
                   const onHand = p.stock?.quantity_on_hand ?? 0;
                   const reserved = p.stock?.quantity_reserved ?? 0;
@@ -198,20 +199,20 @@ export function StockPage() {
                     <tr
                       key={p.id}
                       className={`transition-colors ${
-                        isCritical ? 'bg-red-50 hover:bg-red-100' :
-                        isLow ? 'bg-amber-50 hover:bg-amber-100' :
-                        'hover:bg-gray-50'
+                        isCritical ? 'bg-red-500/10 hover:bg-red-500/[0.16]' :
+                        isLow ? 'bg-amber-500/[0.08] hover:bg-amber-500/[0.14]' :
+                        'hover:bg-[var(--n-input-bg)]'
                       }`}
                     >
-                      <td className="px-5 py-3 font-medium text-navy-dark">{p.name}</td>
-                      <td className="px-5 py-3 font-mono text-xs text-gray-500">{p.sku}</td>
-                      <td className="px-5 py-3 text-gray-500 text-xs">{p.category?.name ?? '—'}</td>
-                      <td className={`px-5 py-3 text-center font-bold text-base ${isCritical ? 'text-red-600' : isLow ? 'text-amber-dark' : 'text-navy-dark'}`}>
+                      <td className="px-5 py-3 font-medium text-[var(--n-text)]">{p.name}</td>
+                      <td className="px-5 py-3 font-mono text-xs text-[var(--n-text-secondary)]">{p.sku}</td>
+                      <td className="px-5 py-3 text-[var(--n-text-secondary)] text-xs">{p.category?.name ?? '—'}</td>
+                      <td className={`px-5 py-3 text-center font-bold text-base ${isCritical ? 'text-red-500' : isLow ? 'text-amber-500' : 'text-[var(--n-text)]'}`}>
                         {onHand}
                       </td>
-                      <td className="px-5 py-3 text-center text-gray-500">{reserved}</td>
-                      <td className="px-5 py-3 text-center font-semibold text-gray-700">{available}</td>
-                      <td className="px-5 py-3 text-center text-gray-500">{p.reorder_level}</td>
+                      <td className="px-5 py-3 text-center text-[var(--n-text-secondary)]">{reserved}</td>
+                      <td className="px-5 py-3 text-center font-semibold text-[var(--n-text)]">{available}</td>
+                      <td className="px-5 py-3 text-center text-[var(--n-text-secondary)]">{p.reorder_level}</td>
                       <td className="px-5 py-3 text-center">
                         {isCritical ? (
                           <Badge variant="danger">Out of Stock</Badge>
@@ -224,7 +225,7 @@ export function StockPage() {
                       <td className="px-5 py-3 text-center">
                         <button
                           onClick={() => setAdjustProduct(p)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-navy border border-navy/30 rounded-lg hover:bg-navy hover:text-white transition-colors"
+                          className="neu-btn neu-btn-secondary" style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}
                         >
                           <HiAdjustments className="w-3.5 h-3.5" />
                           Adjust
@@ -240,38 +241,22 @@ export function StockPage() {
 
         {/* Pagination */}
         {meta.last_page > 1 && (
-          <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
+          <div className="neu-pagination">
+            <p className="neu-pagination-info">
               {(meta.current_page - 1) * meta.per_page + 1}–{Math.min(meta.current_page * meta.per_page, meta.total)} of {meta.total}
             </p>
-            <div className="flex gap-1">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
+            <div className="neu-pagination-buttons">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="neu-pagination-btn">
                 <HiChevronLeft className="w-4 h-4" />
               </button>
               {getPageNumbers(page, meta.last_page).map((n, i) =>
                 n === null ? (
-                  <span key={`e${i}`} className="px-2 py-2 text-gray-400">…</span>
+                  <span key={`e${i}`} className="neu-pagination-dots">…</span>
                 ) : (
-                  <button
-                    key={n}
-                    onClick={() => setPage(n)}
-                    className={`w-8 h-8 rounded-lg text-sm font-medium ${
-                      page === n ? 'bg-navy text-white' : 'border border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    {n}
-                  </button>
+                  <button key={n} onClick={() => setPage(n)} className={`neu-pagination-btn ${page === n ? 'active' : ''}`}>{n}</button>
                 )
               )}
-              <button
-                onClick={() => setPage((p) => Math.min(meta.last_page, p + 1))}
-                disabled={page === meta.last_page}
-                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
+              <button onClick={() => setPage((p) => Math.min(meta.last_page, p + 1))} disabled={page === meta.last_page} className="neu-pagination-btn">
                 <HiChevronRight className="w-4 h-4" />
               </button>
             </div>

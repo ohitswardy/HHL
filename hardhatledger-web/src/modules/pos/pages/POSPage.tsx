@@ -150,14 +150,14 @@ export function POSPage() {
         {/* Row 1: Search + Client */}
         <div className="mb-2 flex gap-3">
           <div className="flex-1 relative">
-            <HiSearch className="absolute left-3 top-2.5 text-gray-400 w-5 h-5" />
+            <HiSearch className="absolute left-3 top-3 w-5 h-5" style={{ color: 'var(--n-text-dim)' }} />
             {searchLoading && (
-              <svg className="absolute right-3 top-2.5 w-4 h-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+              <svg className="absolute right-3 top-3 w-4 h-4 animate-spin" style={{ color: 'var(--n-text-dim)' }} fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
             )}
-            <input ref={searchRef} className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" placeholder='Search by name or SKU (press "/" to focus)' value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input ref={searchRef} className="neu-inline-input w-full" style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }} placeholder='Search by name or SKU (press "/" to focus)' value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <div className="flex-1">
             <Select value={cart.client?.id || ''} onChange={(e) => handleClientChange(e.target.value)} options={clients.map((c) => ({ value: c.id, label: `${c.business_name} (${c.tier?.name || 'N/A'})` }))} placeholder="Walk-in Customer" />
@@ -166,11 +166,12 @@ export function POSPage() {
 
         {/* Row 2: SKU quick-add */}
         <div className="mb-2 relative">
-          <HiLightningBolt className="absolute left-3 top-2.5 text-amber w-4 h-4" />
+          <HiLightningBolt className="absolute left-3 top-2.5 text-amber w-4 h-4 z-10" />
           <input
             ref={skuRef}
             type="text"
-            className="w-full pl-9 pr-4 py-2 border border-dashed border-amber/50 rounded-lg text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-amber/40 focus:border-amber bg-amber/5 placeholder:normal-case placeholder:font-sans placeholder:text-gray-400"
+            className="neu-inline-input mono w-full"
+            style={{ paddingLeft: '2.25rem', borderLeft: '3px solid var(--n-accent)' }}
             placeholder="Quick-add: type or scan a SKU then press Enter…"
             value={skuInput}
             onChange={(e) => setSkuInput(e.target.value.toUpperCase())}
@@ -182,9 +183,7 @@ export function POSPage() {
         <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-none">
           <button
             onClick={() => setFilterCategory('')}
-            className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-colors shrink-0 ${
-              filterCategory === '' ? 'bg-navy text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+            className={`neu-pill shrink-0 ${filterCategory === '' ? 'active' : ''}`}
           >
             All
           </button>
@@ -192,9 +191,7 @@ export function POSPage() {
             <button
               key={c.id}
               onClick={() => setFilterCategory(String(c.id))}
-              className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-colors shrink-0 ${
-                filterCategory === String(c.id) ? 'bg-navy text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+              className={`neu-pill shrink-0 ${filterCategory === String(c.id) ? 'active' : ''}`}
             >
               {c.name}
             </button>
@@ -204,18 +201,18 @@ export function POSPage() {
         <Card className="flex-1 overflow-y-auto p-3">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
             {products.map((p) => (
-              <button key={p.id} onClick={() => addToCart(p)} className="flex flex-col items-start p-3 rounded-xl border border-gray-100 hover:border-amber hover:bg-amber/5 transition-all text-left min-h-20" style={{ minHeight: '44px' }}>
-                <span className="text-sm font-semibold text-navy-dark truncate w-full">{p.name}</span>
-                <span className="text-xs text-gray-500 mt-1">{p.sku} - {p.unit}</span>
+              <button key={p.id} onClick={() => addToCart(p)} className="neu-pos-tile">
+                <span className="text-sm font-semibold truncate w-full" style={{ color: 'var(--n-text)' }}>{p.name}</span>
+                <span className="text-xs mt-1" style={{ color: 'var(--n-text-secondary)' }}>{p.sku} - {p.unit}</span>
                 <div className="mt-auto w-full">
                   <span className="text-sm font-bold text-amber-dark">
                     {resolvePrice(p, cart.client).toFixed(2)}
                   </span>
                   {cart.client?.client_tier_id && (p.tier_prices ?? []).some(t => t.client_tier_id === cart.client!.client_tier_id) && (
-                    <span className="ml-1.5 text-xs text-gray-400 line-through">{Number(p.base_selling_price).toFixed(2)}</span>
+                    <span className="ml-1.5 text-xs line-through" style={{ color: 'var(--n-text-dim)' }}>{Number(p.base_selling_price).toFixed(2)}</span>
                   )}
                 </div>
-                <span className="text-xs text-gray-400">Stock: {p.stock?.quantity_on_hand ?? 0}</span>
+                <span className="text-xs" style={{ color: 'var(--n-text-dim)' }}>Stock: {p.stock?.quantity_on_hand ?? 0}</span>
               </button>
             ))}
           </div>
@@ -225,7 +222,7 @@ export function POSPage() {
       {/* Right Panel - Cart */}
       <div className="w-96 flex flex-col">
         <Card className="flex-1 flex flex-col">
-          <div className="px-4 py-3 border-b bg-navy text-white rounded-t-xl">
+          <div className="neu-cart-header">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <HiShoppingCart className="w-5 h-5" />
@@ -235,35 +232,35 @@ export function POSPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y">
+          <div className="flex-1 overflow-y-auto" style={{ borderBottom: '1px solid var(--n-divider)' }}>
             {cart.items.map((item) => (
-              <div key={item.product.id} className="px-4 py-3">
+              <div key={item.product.id} className="p-3" style={{ borderBottom: '1px solid var(--n-divider)' }}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{item.product.name}</p>
-                    <p className="text-xs text-gray-500">{item.unit_price.toFixed(2)} each</p>
+                    <p className="text-xs" style={{ color: "var(--n-text-secondary)" }}>{item.unit_price.toFixed(2)} each</p>
                   </div>
-                  <button onClick={() => cart.removeItem(item.product.id)} className="p-1 text-red-400 hover:text-red-600"><HiTrash className="w-4 h-4" /></button>
+                  <button onClick={() => cart.removeItem(item.product.id)} className="neu-btn-icon danger"><HiTrash className="w-4 h-4" /></button>
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <div className="flex items-center gap-2">
-                    <button onClick={() => cart.updateQuantity(item.product.id, Math.max(1, item.quantity - 1))} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200"><HiMinus className="w-3 h-3" /></button>
+                    <button onClick={() => cart.updateQuantity(item.product.id, Math.max(1, item.quantity - 1))} className="neu-qty-btn"><HiMinus className="w-3 h-3" /></button>
                     <span className="w-8 text-center font-semibold">{item.quantity}</span>
-                    <button onClick={() => cart.updateQuantity(item.product.id, item.quantity + 1)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200"><HiPlus className="w-3 h-3" /></button>
+                    <button onClick={() => cart.updateQuantity(item.product.id, item.quantity + 1)} className="neu-qty-btn"><HiPlus className="w-3 h-3" /></button>
                   </div>
                   <span className="font-semibold">{item.line_total.toFixed(2)}</span>
                 </div>
               </div>
             ))}
-            {cart.items.length === 0 && <p className="text-center text-gray-400 py-12 text-sm">No items in cart</p>}
+            {cart.items.length === 0 && <p className="text-center py-12 text-sm" style={{ color: 'var(--n-text-dim)' }}>No items in cart</p>}
           </div>
 
-          <div className="border-t p-4 space-y-3">
+          <div className="p-4 space-y-3">
             {cart.fulfillmentType === 'delivery' && (
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 whitespace-nowrap">Delivery Fee</label>
+                <label className="neu-label whitespace-nowrap" style={{ marginBottom: 0 }}>Delivery Fee</label>
                 <div className="relative flex-1">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₱</span>
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--n-text-dim)' }}>₱</span>
                   <input
                     type="number"
                     min="0"
@@ -271,14 +268,15 @@ export function POSPage() {
                     value={deliveryFee}
                     onChange={(e) => setDeliveryFee(e.target.value)}
                     placeholder="0.00"
-                    className="w-full pl-6 pr-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-navy/30"
+                    className="neu-inline-input w-full text-right"
+                    style={{ paddingLeft: '1.5rem' }}
                   />
                 </div>
               </div>
             )}
             <div className="flex justify-between text-sm"><span>Subtotal</span><span>{cart.getSubtotal().toFixed(2)}</span></div>
-            {cart.getDiscountTotal() > 0 && <div className="flex justify-between text-sm text-red-600"><span>Discount</span><span>-{cart.getDiscountTotal().toFixed(2)}</span></div>}
-            <div className="flex justify-between text-lg font-bold text-navy-dark"><span>TOTAL</span><span>{(cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0)).toFixed(2)}</span></div>
+            {cart.getDiscountTotal() > 0 && <div className="flex justify-between text-sm" style={{ color: 'var(--n-danger)' }}><span>Discount</span><span>-{cart.getDiscountTotal().toFixed(2)}</span></div>}
+            <div className="flex justify-between text-lg font-bold" style={{ fontFamily: 'var(--n-font-display)' }}><span>TOTAL</span><span>{(cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0)).toFixed(2)}</span></div>
 
             <div className="grid grid-cols-2 gap-2">
               <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} options={[
@@ -306,12 +304,12 @@ export function POSPage() {
       <Modal isOpen={receiptModal} onClose={() => setReceiptModal(false)} title="Sale Complete" width="md">
         {lastSale && (
           <div className="text-center space-y-4">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <span className="text-green-600 text-2xl">&#10003;</span>
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ background: 'var(--n-success-glow)' }}>
+              <span className="text-2xl" style={{ color: 'var(--n-success)' }}>&#10003;</span>
             </div>
-            <h3 className="text-xl font-bold text-navy-dark">{lastSale.transaction_number}</h3>
+            <h3 className="text-xl font-bold" style={{ fontFamily: 'var(--n-font-display)' }}>{lastSale.transaction_number}</h3>
             <p className="text-3xl font-bold text-amber-dark">{lastSale.total_amount.toLocaleString('en', { minimumFractionDigits: 2 })}</p>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm" style={{ color: "var(--n-text-secondary)" }}>
               {lastSale.client?.business_name || 'Walk-in Customer'} | {lastSale.fulfillment_type}
             </p>
             <div className="flex gap-3 justify-center pt-4">

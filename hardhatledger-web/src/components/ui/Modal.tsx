@@ -29,16 +29,15 @@ export function Modal({ isOpen, onClose, title, children, width = 'md' }: ModalP
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className={`relative bg-white rounded-xl shadow-2xl ${widths[width]} w-full mx-4 max-h-[90vh] overflow-y-auto`}>
-        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b z-10">
-          <h3 className="text-lg font-semibold text-navy-dark">{title}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+    <div className="neu-modal-overlay" onClick={onClose}>
+      <div className={`neu-modal ${widths[width]}`} onClick={(e) => e.stopPropagation()}>
+        <div className="neu-modal-header">
+          <h3 className="neu-modal-title">{title}</h3>
+          <button onClick={onClose} className="neu-btn-icon">
             <HiX className="w-5 h-5" />
           </button>
         </div>
-        <div className="px-6 py-4">{children}</div>
+        <div className="neu-modal-body">{children}</div>
       </div>
     </div>
   );

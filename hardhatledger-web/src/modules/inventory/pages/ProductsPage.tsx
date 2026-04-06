@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input } from '../../../components/ui/Input';
@@ -68,21 +68,21 @@ export function ProductsPage() {
   // Flat list for the filter bar (plain names)
   const flatCategories = categories.flatMap((c) => [c, ...(c.children || [])]);
 
-  // Structured list for the modal category dropdown — shows parent/sub-category hierarchy
+  // Structured list for the modal category dropdown � shows parent/sub-category hierarchy
   const categoryOptions = categories.flatMap((parent) => {
     const isParent = (parent.children?.length ?? 0) > 0;
     const parentEntry = {
       value: String(parent.id),
-      label: isParent ? `📁 ${parent.name}` : parent.name,
+      label: isParent ? `?? ${parent.name}` : parent.name,
     };
     const childEntries = (parent.children || []).map((child) => ({
       value: String(child.id),
-      label: `    ↳ ${child.name}  (${parent.name})`,
+      label: `    ? ${child.name}  (${parent.name})`,
     }));
     return [parentEntry, ...childEntries];
   });
 
-  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
   const getPageNumbers = (current: number, total: number): (number | null)[] => {
     if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -96,7 +96,7 @@ export function ProductsPage() {
     return range;
   };
 
-  // â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Export ───────────────────────────────────────────────────────────────
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -140,7 +140,7 @@ export function ProductsPage() {
     finally { setExporting(false); }
   };
 
-  // â”€â”€ Import â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Import ───────────────────────────────────────────────────────────────
 
   const handleImport = async () => {
     if (!importFile) return;
@@ -157,7 +157,7 @@ export function ProductsPage() {
 
   const closeImport = () => { setImportOpen(false); setImportFile(null); setImportResult(null); };
 
-  // â”€â”€ CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── CRUD ─────────────────────────────────────────────────────────────────
 
   const openCreate = () => {
     setEditing(null);
@@ -193,42 +193,33 @@ export function ProductsPage() {
     setPage(1);
   };
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-navy-dark">Products</h1>
-          {!loading && <p className="text-sm text-gray-500 mt-0.5">{meta.total} product{meta.total !== 1 ? 's' : ''} total</p>}
+          <h1 className="neu-page-title">Products</h1>
+          {!loading && <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">{meta.total} product{meta.total !== 1 ? 's' : ''} total</p>}
         </div>
         <div className="flex items-center gap-2">
           {/* Export Dropdown */}
           <div className="relative" ref={exportRef}>
             <Button onClick={() => setExportOpen((v) => !v)} variant="secondary" disabled={exporting}>
               <HiDocumentDownload className="w-4 h-4 mr-2" />
-              {exporting ? 'Exportingâ€¦' : 'Export'}
+              {exporting ? 'Exporting…' : 'Export'}
               <HiChevronDown className="w-3.5 h-3.5 ml-2" />
             </Button>
             {exportOpen && (
-              <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 animate-fade-in">
-                <button
-                  onClick={handleExportPdf}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                >
+              <div className="neu-dropdown">
+                <button onClick={handleExportPdf} className="neu-dropdown-item">
                   <HiDocumentText className="w-4 h-4 text-red-500" /> Export as PDF
                 </button>
-                <button
-                  onClick={handleExportCsv}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                >
+                <button onClick={handleExportCsv} className="neu-dropdown-item">
                   <HiTable className="w-4 h-4 text-green-600" /> Export as CSV
                 </button>
-                <button
-                  onClick={handleExportXlsx}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                >
+                <button onClick={handleExportXlsx} className="neu-dropdown-item">
                   <HiTable className="w-4 h-4 text-emerald-600" /> Export as XLSX
                 </button>
               </div>
@@ -247,38 +238,39 @@ export function ProductsPage() {
       {/* Filters */}
       <Card className="p-4 mb-4">
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <HiSearch className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
+          <div className="relative flex-[3]">
+            <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
             <input
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
-              placeholder="Search by name or SKUâ€¦"
+              className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
+              placeholder="Search by name or SKU…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <select
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30 bg-white text-gray-700"
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-          >
-            <option value="">All Categories</option>
-            {flatCategories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <select
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30 bg-white text-gray-700"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+          <div className="w-44 shrink-0">
+            <Select
+              inline
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              options={[{ value: '', label: 'All Categories' }, ...flatCategories.map((c) => ({ value: c.id, label: c.name }))]}
+            />
+          </div>
+          <div className="w-44 shrink-0">
+            <Select
+              inline
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              options={[
+                { value: 'all', label: 'All Status' },
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' },
+              ]}
+            />
+          </div>
           {(search || filterCategory || filterStatus !== 'all') && (
             <button
               onClick={() => { setSearch(''); setFilterCategory(''); setFilterStatus('all'); }}
-              className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors whitespace-nowrap"
+              className="px-3 py-2 text-sm text-[var(--n-text-secondary)] hover:text-[var(--n-text)] hover:bg-[var(--n-inset)] rounded-lg transition-colors whitespace-nowrap"
             >
               Clear filters
             </button>
@@ -292,29 +284,29 @@ export function ProductsPage() {
           <div className="py-16 flex justify-center"><Spinner /></div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+            <table className="neu-table">
+              <thead >
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">SKU</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Category</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">Unit</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Cost</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Selling</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">Stock</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
+                  <th >SKU</th>
+                  <th >Name</th>
+                  <th >Category</th>
+                  <th className="text-center px-4 py-3 font-medium text-[var(--n-text-secondary)]">Unit</th>
+                  <th className="text-right">Cost</th>
+                  <th className="text-right">Selling</th>
+                  <th className="text-center px-4 py-3 font-medium text-[var(--n-text-secondary)]">Stock</th>
+                  <th className="text-center px-4 py-3 font-medium text-[var(--n-text-secondary)]">Status</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody >
                 {products.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.sku}</td>
-                    <td className="px-4 py-3 font-medium">{p.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{p.category?.name || 'â€”'}</td>
-                    <td className="px-4 py-3 text-center text-gray-500">{p.unit}</td>
-                    <td className="px-4 py-3 text-right">{Number(p.cost_price).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{Number(p.base_selling_price).toFixed(2)}</td>
+                  <tr key={p.id} >
+                    <td className="px-4 py-3 font-mono text-xs text-[var(--n-text-secondary)]">{p.sku}</td>
+                    <td className="font-medium">{p.name}</td>
+                    <td style={{ color: "var(--n-text-secondary)" }}>{p.category?.name || '—'}</td>
+                    <td className="px-4 py-3 text-center text-[var(--n-text-secondary)]">{p.unit}</td>
+                    <td className="text-right">{Number(p.cost_price).toFixed(2)}</td>
+                    <td className="text-right font-semibold">{Number(p.base_selling_price).toFixed(2)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`font-semibold ${(p.stock?.quantity_on_hand ?? 0) <= p.reorder_level ? 'text-red-600' : 'text-green-600'}`}>
                         {p.stock?.quantity_on_hand ?? 0}
@@ -323,60 +315,38 @@ export function ProductsPage() {
                     <td className="px-4 py-3 text-center">
                       <Badge variant={p.is_active ? 'success' : 'neutral'}>{p.is_active ? 'Active' : 'Inactive'}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <button onClick={() => openEdit(p)} className="p-1.5 hover:bg-blue-50 rounded text-blue-600"><HiPencil className="w-4 h-4" /></button>
-                      <button onClick={() => handleDelete(p.id)} className="p-1.5 hover:bg-red-50 rounded text-red-600 ml-1"><HiTrash className="w-4 h-4" /></button>
+                    <td className="text-right">
+                      <button onClick={() => openEdit(p)} className="neu-btn-icon info"><HiPencil className="w-4 h-4" /></button>
+                      <button onClick={() => handleDelete(p.id)} className="neu-btn-icon danger ml-1"><HiTrash className="w-4 h-4" /></button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {products.length === 0 && (
-              <p className="text-center text-gray-400 py-12">No products found{(search || filterCategory || filterStatus !== 'all') ? ' â€” try adjusting your filters' : ''}</p>
+              <p className="text-center text-[var(--n-text-dim)] py-12">No products found{(search || filterCategory || filterStatus !== 'all') ? ' — try adjusting your filters' : ''}</p>
             )}
           </div>
         )}
 
         {/* Pagination */}
         {meta.last_page > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t">
-            <p className="text-xs text-gray-500">
-              Page {meta.current_page} of {meta.last_page} &nbsp;Â·&nbsp; {meta.total} results
+          <div className="neu-pagination">
+            <p className="neu-pagination-info">
+              Page {meta.current_page} of {meta.last_page} &nbsp;·&nbsp; {meta.total} results
             </p>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={meta.current_page === 1}
-                className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                aria-label="Previous page"
-              >
+            <div className="neu-pagination-buttons">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={meta.current_page === 1} className="neu-pagination-btn" aria-label="Previous page">
                 <HiChevronLeft className="w-4 h-4" />
               </button>
-
               {getPageNumbers(meta.current_page, meta.last_page).map((n, i) =>
                 n === null ? (
-                  <span key={`ellipsis-${i}`} className="px-1 text-gray-400 text-sm select-none">â€¦</span>
+                  <span key={`ellipsis-${i}`} className="neu-pagination-dots">…</span>
                 ) : (
-                  <button
-                    key={n}
-                    onClick={() => setPage(n)}
-                    className={`min-w-8 h-8 px-2 rounded text-sm font-medium transition-colors ${
-                      meta.current_page === n
-                        ? 'bg-navy text-white'
-                        : 'hover:bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {n}
-                  </button>
+                  <button key={n} onClick={() => setPage(n)} className={`neu-pagination-btn ${meta.current_page === n ? 'active' : ''}`}>{n}</button>
                 )
               )}
-
-              <button
-                onClick={() => setPage((p) => Math.min(meta.last_page, p + 1))}
-                disabled={meta.current_page === meta.last_page}
-                className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                aria-label="Next page"
-              >
+              <button onClick={() => setPage((p) => Math.min(meta.last_page, p + 1))} disabled={meta.current_page === meta.last_page} className="neu-pagination-btn" aria-label="Next page">
                 <HiChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -387,23 +357,23 @@ export function ProductsPage() {
       {/* Import Modal */}
       <Modal isOpen={importOpen} onClose={closeImport} title="Import Products" width="md">
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-[var(--n-text-secondary)]">
             Upload a <strong>.csv</strong>, <strong>.tsv</strong>, or <strong>.xlsx</strong> file.
-            The first row must be a header row. Include only the columns you have — all are optional except <code>name</code>:
+            The first row must be a header row. Include only the columns you have � all are optional except <code>name</code>:
           </p>
-          <div className="bg-gray-50 rounded-lg p-3 text-xs font-mono text-gray-700 leading-relaxed">
+          <div className="bg-[var(--n-input-bg)] rounded-lg p-3 text-xs font-mono text-[var(--n-text)] leading-relaxed">
             name, sku, category, unit, cost_price, retail_price, wholesale_price, reorder_level, description
           </div>
-          <div className="text-xs text-gray-500 space-y-0.5">
+          <div className="text-xs text-[var(--n-text-secondary)] space-y-0.5">
             <div><span className="font-semibold text-amber-600">Required:</span> <code>name</code>. All other columns are optional and can be omitted.</div>
             <div>SKU is auto-generated (IMP-XXXX) if omitted. Rows with duplicate SKUs are skipped.</div>
           </div>
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Select file</span>
+            <span className="text-sm font-medium text-[var(--n-text)]">Select file</span>
             <input
               type="file"
               accept=".csv,.tsv,.xlsx,.xls"
-              className="mt-1 block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-navy file:text-white hover:file:bg-navy/80 cursor-pointer"
+              className="mt-1 block w-full text-sm text-[var(--n-text-secondary)] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-navy file:text-white hover:file:bg-navy/80 cursor-pointer"
               onChange={(e) => { setImportFile(e.target.files?.[0] ?? null); setImportResult(null); }}
             />
           </label>
@@ -427,7 +397,7 @@ export function ProductsPage() {
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={closeImport}>Close</Button>
             <Button variant="amber" onClick={handleImport} disabled={!importFile || importing}>
-              <HiUpload className="w-4 h-4 mr-2" />{importing ? 'Importingâ€¦' : 'Import'}
+              <HiUpload className="w-4 h-4 mr-2" />{importing ? 'Importing…' : 'Import'}
             </Button>
           </div>
         </div>

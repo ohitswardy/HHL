@@ -121,7 +121,10 @@ class PurchaseOrderController extends Controller
                 'received_date' => $allReceived ? now() : null,
             ]);
 
-            $this->journalService->postPurchaseEntry($purchaseOrder);
+            // Post journal entry only once when fully received to avoid duplicate accounting
+            if ($allReceived) {
+                $this->journalService->postPurchaseEntry($purchaseOrder);
+            }
         });
 
         $purchaseOrder->load(['supplier', 'user', 'items.product']);

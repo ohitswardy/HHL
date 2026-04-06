@@ -38,19 +38,19 @@ export function SuppliersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-navy-dark">Suppliers</h1>
+        <h1 className="neu-page-title">Suppliers</h1>
         <Button onClick={openCreate} variant="amber"><HiPlus className="w-4 h-4 mr-2" /> Add Supplier</Button>
       </div>
-      <Card className="p-4 mb-4"><div className="relative"><HiSearch className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" /><input className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30" placeholder="Search suppliers..." value={search} onChange={(e) => setSearch(e.target.value)} /></div></Card>
+      <Card className="p-4 mb-4"><div className="neu-search"><HiSearch className="neu-search-icon w-4 h-4" /><div className="neu-inset w-full"><input className="neu-input" style={{ paddingLeft: "2.5rem" }} placeholder="Search suppliers..." value={search} onChange={(e) => setSearch(e.target.value)} /></div></div></Card>
       <Card>{loading ? <Spinner /> : (
-        <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50 border-b"><tr>
-          <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th><th className="text-left px-4 py-3 font-medium text-gray-600">Contact</th><th className="text-left px-4 py-3 font-medium text-gray-600">Phone</th><th className="text-left px-4 py-3 font-medium text-gray-600">Email</th><th className="text-left px-4 py-3 font-medium text-gray-600">Terms</th><th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
-        </tr></thead><tbody className="divide-y">{suppliers.map((s) => (
-          <tr key={s.id} className="hover:bg-gray-50">
-            <td className="px-4 py-3 font-medium">{s.name}</td><td className="px-4 py-3 text-gray-600">{s.contact_person}</td><td className="px-4 py-3 text-gray-600">{s.phone}</td><td className="px-4 py-3 text-gray-600">{s.email}</td><td className="px-4 py-3 text-gray-600">{s.payment_terms}</td>
-            <td className="px-4 py-3 text-right">
-              <button onClick={() => openEdit(s)} className="p-1.5 hover:bg-blue-50 rounded text-blue-600"><HiPencil className="w-4 h-4" /></button>
-              <button onClick={async () => { if (confirm('Delete?')) { await api.delete(`/suppliers/${s.id}`); toast.success('Deleted'); fetch(); } }} className="p-1.5 hover:bg-red-50 rounded text-red-600 ml-1"><HiTrash className="w-4 h-4" /></button>
+        <div className="overflow-x-auto"><table className="neu-table"><thead ><tr>
+          <th >Name</th><th >Contact</th><th >Phone</th><th >Email</th><th >Terms</th><th className="text-right">Actions</th>
+        </tr></thead><tbody >{suppliers.map((s) => (
+          <tr key={s.id} >
+            <td className="font-medium">{s.name}</td><td style={{ color: "var(--n-text-secondary)" }}>{s.contact_person}</td><td style={{ color: "var(--n-text-secondary)" }}>{s.phone}</td><td style={{ color: "var(--n-text-secondary)" }}>{s.email}</td><td style={{ color: "var(--n-text-secondary)" }}>{s.payment_terms}</td>
+            <td className="text-right">
+              <button onClick={() => openEdit(s)} className="neu-btn-icon info"><HiPencil className="w-4 h-4" /></button>
+              <button onClick={async () => { if (confirm('Delete?')) { await api.delete(`/suppliers/${s.id}`); toast.success('Deleted'); fetch(); } }} className="neu-btn-icon danger ml-1"><HiTrash className="w-4 h-4" /></button>
             </td>
           </tr>
         ))}</tbody></table></div>

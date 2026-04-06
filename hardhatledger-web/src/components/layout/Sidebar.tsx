@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { HiHome, HiCube, HiShoppingCart, HiDocumentReport, HiUserGroup, HiTruck, HiCollection, HiClipboardList, HiChartBar, HiCash, HiDocumentText, HiShieldCheck, HiTag } from 'react-icons/hi';
+import { HiHome, HiCube, HiShoppingCart, HiDocumentReport, HiUserGroup, HiTruck, HiCollection, HiClipboardList, HiChartBar, HiCash, HiDocumentText, HiShieldCheck, HiTag, HiX } from 'react-icons/hi';
 import { useAuthStore } from '../../stores/authStore';
 
 interface NavItem {
@@ -53,49 +53,52 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     return item.roles.some((role) => hasRole(role));
   };
 
+  const linkClass = ({ isActive }: { isActive: boolean }) =>
+    `neu-sidebar-link ${isActive ? 'neu-sidebar-link-active' : ''}`;
+
   return (
     <>
-      {isOpen && <div className="fixed inset-0 bg-black/30 z-20 lg:hidden" onClick={onClose} />}
-      <aside className={`fixed lg:static inset-y-0 left-0 z-30 w-64 bg-navy text-white transform transition-transform lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10 shrink-0">
-          <div className="w-9 h-9 bg-amber rounded-lg flex items-center justify-center">
-            <span className="text-navy-dark font-bold text-lg">H</span>
+      {/* Overlay — mobile only */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-20 lg:hidden"
+          style={{ background: 'var(--n-modal-overlay)', backdropFilter: 'blur(4px)' }}
+          onClick={onClose}
+          aria-label="Close menu"
+        />
+      )}
+      <aside className={`neu-sidebar fixed lg:static inset-y-0 left-0 z-30 w-64 transform transition-transform duration-300 lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
+        {/* Logo + mobile close */}
+        <div className="flex items-center gap-3 px-6 py-5 shrink-0" style={{ borderBottom: '1px solid var(--n-sidebar-border)' }}>
+          <img src="/HHLicon.png" alt="HardhatLedger" className="shrink-0" style={{ width: 36, height: 36, objectFit: 'contain' }} />
+          <div className="flex-1 min-w-0">
+            <h1 className="font-bold text-base" style={{ fontFamily: 'var(--n-font-display)', color: 'var(--n-sidebar-text)' }}>HardhatLedger</h1>
+            <p className="text-xs" style={{ color: 'var(--n-sidebar-dim)' }}>Construction Materials</p>
           </div>
-          <div>
-            <h1 className="font-bold text-base">HardhatLedger</h1>
-            <p className="text-xs text-white/60">Construction Materials</p>
-          </div>
+          {/* Close button — mobile only */}
+          <button
+            onClick={onClose}
+            className="lg:hidden shrink-0 p-1 rounded-lg transition-colors"
+            style={{ color: 'var(--n-sidebar-dim)' }}
+            aria-label="Close sidebar"
+          >
+            <HiX className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
-          {/* Dashboard */}
-          <NavLink
-            to="/dashboard"
-            end
-            onClick={onClose}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-white/15 text-amber border-l-[3px] border-amber'
-                  : 'text-white/70 hover:bg-white/10 hover:text-white'
-              }`
-            }
-          >
+          <NavLink to="/dashboard" end onClick={onClose} className={linkClass}>
             <HiHome className="w-5 h-5" />
             Dashboard
           </NavLink>
 
-          {/* Grouped sections */}
           {groups.map((group) => {
             const visibleItems = group.items.filter(isVisible);
             if (visibleItems.length === 0) return null;
             return (
               <div key={group.title}>
-                <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/35">
-                  {group.title}
-                </p>
+                <p className="neu-sidebar-section">{group.title}</p>
                 <div className="space-y-0.5">
                   {visibleItems.map((item) => (
                     <NavLink
@@ -103,13 +106,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                       to={item.to}
                       end={item.to === '/accounting'}
                       onClick={onClose}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          isActive
-                            ? 'bg-white/15 text-amber border-l-[3px] border-amber'
-                            : 'text-white/70 hover:bg-white/10 hover:text-white'
-                        }`
-                      }
+                      className={linkClass}
                     >
                       {item.icon}
                       {item.label}
@@ -120,24 +117,11 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             );
           })}
 
-          {/* Admin */}
           {hasRole('Super Admin') || hasRole('Manager') ? (
             <div>
-              <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/35">
-                Admin
-              </p>
+              <p className="neu-sidebar-section">Admin</p>
               <div className="space-y-0.5">
-                <NavLink
-                  to="/users"
-                  onClick={onClose}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-white/15 text-amber border-l-[3px] border-amber'
-                        : 'text-white/70 hover:bg-white/10 hover:text-white'
-                    }`
-                  }
-                >
+                <NavLink to="/users" onClick={onClose} className={linkClass}>
                   <HiShieldCheck className="w-5 h-5" />
                   User Management
                 </NavLink>
@@ -147,14 +131,14 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         </nav>
 
         {/* User footer */}
-        <div className="shrink-0 px-4 py-3 border-t border-white/10">
+        <div className="shrink-0 px-4 py-3" style={{ borderTop: '1px solid var(--n-sidebar-border)' }}>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-amber/20 rounded-full flex items-center justify-center">
-              <span className="text-amber text-sm font-bold">{user?.name?.charAt(0)}</span>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'var(--n-accent-glow)' }}>
+              <span style={{ color: 'var(--n-accent)', fontSize: '0.875rem', fontWeight: 700 }}>{user?.name?.charAt(0)}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.name}</p>
-              <p className="text-xs text-white/50 truncate">{user?.roles?.[0]}</p>
+              <p className="text-sm font-medium truncate" style={{ color: 'var(--n-sidebar-text)' }}>{user?.name}</p>
+              <p className="text-xs truncate" style={{ color: 'var(--n-sidebar-dim)' }}>{user?.roles?.[0]}</p>
             </div>
           </div>
         </div>

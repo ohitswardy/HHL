@@ -68,14 +68,14 @@ export function AdjustStockModal({ product, onClose, onSuccess }: Props) {
   return (
     <Modal isOpen onClose={onClose} title="Adjust Stock" width="sm">
       {/* Product header */}
-      <div className="bg-gray-50 rounded-lg px-4 py-3 mb-4 flex items-start justify-between gap-3">
+      <div className="bg-[var(--n-input-bg)] rounded-lg px-4 py-3 mb-4 flex items-start justify-between gap-3">
         <div>
-          <p className="font-semibold text-navy-dark text-sm">{product.name}</p>
-          <p className="text-xs text-gray-500 font-mono mt-0.5">{product.sku}</p>
+          <p className="font-semibold text-[var(--n-text)] text-sm">{product.name}</p>
+          <p className="text-xs text-[var(--n-text-secondary)] font-mono mt-0.5">{product.sku}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-xs text-gray-500">On Hand</p>
-          <p className="text-xl font-bold text-navy-dark">{onHand}</p>
+          <p className="text-xs" style={{ color: "var(--n-text-secondary)" }}>On Hand</p>
+          <p className="text-xl font-bold text-[var(--n-text)]">{onHand}</p>
         </div>
       </div>
 
@@ -104,7 +104,7 @@ export function AdjustStockModal({ product, onClose, onSuccess }: Props) {
         {/* Live preview */}
         {quantity && !errors.quantity && (
           <div className={`rounded-lg px-4 py-3 flex items-center justify-between text-sm ${previewDanger ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
-            <span className="text-gray-600 font-medium">New stock level:</span>
+            <span className="text-[var(--n-text-secondary)] font-medium">New stock level:</span>
             <div className="flex items-center gap-2">
               <span className={`text-xl font-bold ${previewDanger ? 'text-red-600' : 'text-green-700'}`}>
                 {preview}
@@ -117,9 +117,9 @@ export function AdjustStockModal({ product, onClose, onSuccess }: Props) {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+          <label className="block text-sm font-medium text-[var(--n-text)] mb-1">Notes <span className="text-[var(--n-text-dim)] font-normal">(optional)</span></label>
           <textarea
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30 resize-none"
+            className="neu-inline-input w-full resize-none"
             rows={2}
             placeholder="Reason for adjustment, supplier ref, etc."
             value={notes}

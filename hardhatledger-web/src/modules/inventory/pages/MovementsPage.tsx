@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
+import { DatePicker } from '../../../components/ui/DatePicker';
 import { Spinner } from '../../../components/ui/Spinner';
 import { HiSearch, HiChevronLeft, HiChevronRight, HiFilter, HiX, HiPrinter } from 'react-icons/hi';
 import api from '../../../lib/api';
@@ -126,18 +127,18 @@ export function MovementsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-navy-dark">Inventory Movements</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Full audit trail of all stock changes</p>
+          <h1 className="neu-page-title">Inventory Movements</h1>
+          <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">Full audit trail of all stock changes</p>
         </div>
 
         <div className="relative group shrink-0">
           <button
             onClick={handlePrint}
             disabled={!canPrint || printing}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`neu-btn ${
               canPrint
-                ? 'bg-navy text-white hover:bg-navy-dark'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                ? 'neu-btn-primary'
+                : 'bg-[var(--n-inset)] text-[var(--n-text-dim)] cursor-not-allowed'
             }`}
           >
             {printing ? (
@@ -162,9 +163,9 @@ export function MovementsPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           {/* Search */}
           <div className="relative md:col-span-1">
-            <HiSearch className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
+            <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
             <input
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
+              className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
               placeholder="Search product…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -173,7 +174,7 @@ export function MovementsPage() {
 
           {/* Type filter */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Movement Type</label>
+            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Movement Type</label>
             <div className="flex gap-1">
               {(['', 'in', 'out', 'adjustment'] as const).map((t) => (
                 <button
@@ -181,8 +182,8 @@ export function MovementsPage() {
                   onClick={() => setFilterType(t)}
                   className={`px-3 py-2 text-xs rounded-lg border font-medium transition-colors ${
                     filterType === t
-                      ? 'bg-navy text-white border-navy'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-navy/40'
+                      ? 'neu-btn-primary'
+                      : 'bg-[var(--n-surface)] text-[var(--n-text-secondary)] border-[var(--n-divider)] hover:border-[var(--n-accent)]/40'
                   }`}
                 >
                   {t === '' ? 'All' : t === 'in' ? 'IN' : t === 'out' ? 'OUT' : 'ADJ'}
@@ -193,27 +194,26 @@ export function MovementsPage() {
 
           {/* Date range */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">From</label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
+            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">From</label>
+            <DatePicker
+              inline
               value={filterFrom}
               onChange={(e) => setFilterFrom(e.target.value)}
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">To</label>
+            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">To</label>
             <div className="flex gap-2">
-              <input
-                type="date"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
+              <DatePicker
+                inline
                 value={filterTo}
                 onChange={(e) => setFilterTo(e.target.value)}
+                className="flex-1"
               />
               {hasActiveFilters && (
                 <button
                   onClick={clearFilters}
-                  className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-500"
+                  className="p-2 border border-[var(--n-divider)] rounded-lg hover:bg-[var(--n-input-bg)] text-[var(--n-text-secondary)]"
                   title="Clear filters"
                 >
                   <HiX className="w-4 h-4" />
@@ -225,12 +225,12 @@ export function MovementsPage() {
 
         {/* Active filter chips */}
         {hasActiveFilters && (
-          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
-            <span className="text-xs text-gray-500 flex items-center gap-1"><HiFilter className="w-3 h-3" /> Active filters:</span>
-            {search && <span className="px-2 py-0.5 bg-navy/10 text-navy text-xs rounded-full">"{search}"</span>}
-            {filterType && <span className="px-2 py-0.5 bg-navy/10 text-navy text-xs rounded-full">Type: {filterType.toUpperCase()}</span>}
-            {filterFrom && <span className="px-2 py-0.5 bg-navy/10 text-navy text-xs rounded-full">From: {filterFrom}</span>}
-            {filterTo && <span className="px-2 py-0.5 bg-navy/10 text-navy text-xs rounded-full">To: {filterTo}</span>}
+          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--n-divider)]">
+            <span className="text-xs text-[var(--n-text-secondary)] flex items-center gap-1"><HiFilter className="w-3 h-3" /> Active filters:</span>
+            {search && <span className="px-2 py-0.5 bg-[var(--n-info-glow)] text-navy text-xs rounded-full">"{search}"</span>}
+            {filterType && <span className="px-2 py-0.5 bg-[var(--n-info-glow)] text-navy text-xs rounded-full">Type: {filterType.toUpperCase()}</span>}
+            {filterFrom && <span className="px-2 py-0.5 bg-[var(--n-info-glow)] text-navy text-xs rounded-full">From: {filterFrom}</span>}
+            {filterTo && <span className="px-2 py-0.5 bg-[var(--n-info-glow)] text-navy text-xs rounded-full">To: {filterTo}</span>}
           </div>
         )}
       </Card>
@@ -243,38 +243,38 @@ export function MovementsPage() {
           </div>
         ) : movements.length === 0 ? (
           <div className="py-16 text-center space-y-2">
-            <p className="text-gray-400">No movements found</p>
+            <p className="text-[var(--n-text-dim)]">No movements found</p>
             {hasActiveFilters && (
               <button onClick={clearFilters} className="text-sm text-navy underline">Clear filters</button>
             )}
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="neu-table">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide whitespace-nowrap">Date & Time</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Product</th>
-                  <th className="text-center px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Type</th>
-                  <th className="text-center px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Qty</th>
-                  <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Unit Cost</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Reference</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Notes</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">User</th>
+                <tr className="">
+                  <th className="text-left px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide whitespace-nowrap">Date & Time</th>
+                  <th className="text-left px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Product</th>
+                  <th className="text-center px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Type</th>
+                  <th className="text-center px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Qty</th>
+                  <th className="text-right px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Unit Cost</th>
+                  <th className="text-left px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Reference</th>
+                  <th className="text-left px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">Notes</th>
+                  <th className="text-left px-5 py-3 font-semibold text-[var(--n-text-secondary)] text-xs uppercase tracking-wide">User</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {movements.map((m) => {
                   const typeMeta = TYPE_META[m.type] ?? { label: m.type.toUpperCase(), variant: 'neutral' as any };
                   const refLabel = REF_LABELS[m.reference_type ?? ''] ?? m.reference_type ?? '—';
                   return (
-                    <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-3 text-gray-500 text-xs whitespace-nowrap">
+                    <tr key={m.id} className="hover:bg-[var(--n-input-bg)] transition-colors">
+                      <td className="px-5 py-3 text-[var(--n-text-secondary)] text-xs whitespace-nowrap">
                         {dayjs(m.created_at).format('MMM D, YYYY h:mm A')}
                       </td>
                       <td className="px-5 py-3">
-                        <p className="font-medium text-navy-dark">{m.product?.name}</p>
-                        <p className="text-xs text-gray-400 font-mono">{m.product?.sku}</p>
+                        <p className="font-medium text-[var(--n-text)]">{m.product?.name}</p>
+                        <p className="text-xs text-[var(--n-text-dim)] font-mono">{m.product?.sku}</p>
                       </td>
                       <td className="px-5 py-3 text-center">
                         <Badge variant={typeMeta.variant}>{typeMeta.label}</Badge>
@@ -286,19 +286,19 @@ export function MovementsPage() {
                       }`}>
                         {m.type === 'in' ? '+' : m.type === 'out' ? '-' : '='}{m.quantity}
                       </td>
-                      <td className="px-5 py-3 text-right text-gray-600 tabular-nums">
+                      <td className="px-5 py-3 text-right text-[var(--n-text-secondary)] tabular-nums">
                         {m.unit_cost ? parseFloat(m.unit_cost as any).toFixed(2) : '—'}
                       </td>
                       <td className="px-5 py-3">
-                        <span className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">{refLabel}</span>
+                        <span className="text-xs px-2 py-0.5 bg-[var(--n-inset)] rounded-full text-[var(--n-text-secondary)]">{refLabel}</span>
                         {m.reference_id && (
-                          <span className="text-xs text-gray-400 ml-1">#{m.reference_id}</span>
+                          <span className="text-xs text-[var(--n-text-dim)] ml-1">#{m.reference_id}</span>
                         )}
                       </td>
-                      <td className="px-5 py-3 text-gray-500 text-sm max-w-[180px]">
+                      <td className="px-5 py-3 text-[var(--n-text-secondary)] text-sm max-w-[180px]">
                         <span className="truncate block" title={m.notes ?? ''}>{m.notes || '—'}</span>
                       </td>
-                      <td className="px-5 py-3 text-gray-500 text-sm whitespace-nowrap">{m.user?.name ?? '—'}</td>
+                      <td className="px-5 py-3 text-[var(--n-text-secondary)] text-sm whitespace-nowrap">{m.user?.name ?? '—'}</td>
                     </tr>
                   );
                 })}
@@ -309,28 +309,26 @@ export function MovementsPage() {
 
         {/* Pagination */}
         {meta.last_page > 1 && (
-          <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
+          <div className="neu-pagination">
+            <p className="neu-pagination-info">
               {(meta.current_page - 1) * meta.per_page + 1}–{Math.min(meta.current_page * meta.per_page, meta.total)} of {meta.total}
             </p>
-            <div className="flex gap-1">
+            <div className="neu-pagination-buttons">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="neu-pagination-btn"
               >
                 <HiChevronLeft className="w-4 h-4" />
               </button>
               {getPageNumbers(page, meta.last_page).map((n, i) =>
                 n === null ? (
-                  <span key={`e${i}`} className="px-2 py-2 text-gray-400">…</span>
+                  <span key={`e${i}`} className="neu-pagination-dots">…</span>
                 ) : (
                   <button
                     key={n}
                     onClick={() => setPage(n)}
-                    className={`w-8 h-8 rounded-lg text-sm font-medium ${
-                      page === n ? 'bg-navy text-white' : 'border border-gray-200 hover:bg-gray-50'
-                    }`}
+                    className={`neu-pagination-btn ${page === n ? 'active' : ''}`}
                   >
                     {n}
                   </button>
@@ -339,7 +337,7 @@ export function MovementsPage() {
               <button
                 onClick={() => setPage((p) => Math.min(meta.last_page, p + 1))}
                 disabled={page === meta.last_page}
-                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="neu-pagination-btn"
               >
                 <HiChevronRight className="w-4 h-4" />
               </button>

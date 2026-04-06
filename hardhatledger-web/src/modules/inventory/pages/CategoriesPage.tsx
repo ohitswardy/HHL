@@ -157,8 +157,8 @@ export function CategoriesPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-navy-900">Categories</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="neu-page-title">Categories</h1>
+          <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">
             {topLevelCount} top-level &middot; {totalCount} total
           </p>
         </div>
@@ -170,13 +170,13 @@ export function CategoriesPage() {
       {/* Search */}
       <div className="mb-4 max-w-sm">
         <div className="relative">
-          <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--n-text-dim)] w-4 h-4" />
           <input
             type="text"
             placeholder="Search categories…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30 focus:border-navy"
+            className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
           />
         </div>
       </div>
@@ -184,11 +184,11 @@ export function CategoriesPage() {
       {/* Category Tree */}
       <Card>
         {filtered.length === 0 ? (
-          <p className="text-center text-gray-500 py-10">
+          <p className="text-center text-[var(--n-text-secondary)] py-10">
             {search ? 'No categories match your search.' : 'No categories yet. Create your first one.'}
           </p>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y" style={{ borderColor: 'var(--n-divider)' }}>
             {filtered.map((cat) => (
               <CategoryRow
                 key={cat.id}
@@ -261,14 +261,14 @@ function CategoryRow({ cat, depth, expanded, onToggle, onEdit, onDelete }: RowPr
   return (
     <>
       <div
-        className={`flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors ${depth > 0 ? 'bg-white' : ''}`}
+        className={`flex items-center gap-2 px-4 py-3 hover:bg-[var(--n-input-bg)] transition-colors ${depth > 0 ? 'bg-[var(--n-surface)]' : ''}`}
         style={{ paddingLeft: `${1 + depth * 1.5}rem` }}
       >
         {/* Expand toggle */}
         <button
           type="button"
           onClick={() => hasChildren && onToggle(cat.id)}
-          className={`w-5 h-5 flex items-center justify-center text-gray-400 flex-shrink-0 ${hasChildren ? 'cursor-pointer hover:text-navy' : 'cursor-default'}`}
+          className={`w-5 h-5 flex items-center justify-center text-[var(--n-text-dim)] flex-shrink-0 ${hasChildren ? 'cursor-pointer hover:text-navy' : 'cursor-default'}`}
         >
           {hasChildren
             ? (isExpanded ? <HiChevronDown className="w-4 h-4" /> : <HiChevronRight className="w-4 h-4" />)
@@ -278,10 +278,10 @@ function CategoryRow({ cat, depth, expanded, onToggle, onEdit, onDelete }: RowPr
         {/* Folder icon */}
         {hasChildren
           ? <HiFolderOpen className="w-4 h-4 text-amber flex-shrink-0" />
-          : <HiFolder className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+          : <HiFolder className="w-4 h-4 text-[var(--n-text-dim)] flex-shrink-0" />}
 
         {/* Name */}
-        <span className={`flex-1 text-sm ${depth === 0 ? 'font-semibold text-navy-800' : 'text-gray-700'}`}>
+        <span className={`flex-1 text-sm ${depth === 0 ? 'font-semibold text-[var(--n-text)]' : 'text-[var(--n-text)]'}`}>
           {cat.name}
         </span>
 
@@ -294,7 +294,7 @@ function CategoryRow({ cat, depth, expanded, onToggle, onEdit, onDelete }: RowPr
             <Badge variant="neutral">{total} total</Badge>
           )}
           {ownCount === 0 && !hasChildren && (
-            <span className="text-xs text-gray-400">No products</span>
+            <span className="text-xs text-[var(--n-text-dim)]">No products</span>
           )}
         </div>
 

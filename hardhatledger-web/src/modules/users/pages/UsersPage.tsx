@@ -5,6 +5,7 @@ import { Input } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Spinner } from '../../../components/ui/Spinner';
+import { Badge } from '../../../components/ui/Badge';
 import { HiPlus, HiPencil, HiTrash, HiSearch, HiShieldCheck } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
@@ -14,10 +15,10 @@ import type { User } from '../../../types';
 const ROLES = ['Sales Clerk', 'Admin', 'Manager', 'Super Admin'];
 
 const ROLE_COLORS: Record<string, string> = {
-  'Super Admin': 'bg-purple-100 text-purple-800',
-  'Admin': 'bg-navy/10 text-navy',
-  'Manager': 'bg-amber/20 text-amber-800',
-  'Sales Clerk': 'bg-green-100 text-green-800',
+  'Super Admin': 'neu-badge neu-badge-danger',
+  'Admin': 'neu-badge neu-badge-info',
+  'Manager': 'neu-badge neu-badge-warning',
+  'Sales Clerk': 'neu-badge neu-badge-success',
 };
 
 const emptyForm = {
@@ -140,7 +141,7 @@ export function UsersPage() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <HiShieldCheck className="w-7 h-7 text-navy" />
-          <h1 className="text-2xl font-bold text-navy-dark">User Management</h1>
+          <h1 className="neu-page-title">User Management</h1>
         </div>
         {canManageUsers && (
           <Button onClick={openCreate} variant="amber">
@@ -152,20 +153,22 @@ export function UsersPage() {
       <Card className="p-4 mb-4">
         <div className="flex gap-3">
           <div className="relative flex-1">
-            <HiSearch className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
+            <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
             <input
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
+              className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
               placeholder="Search by name or email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select
-            label=""
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            options={[{ value: '', label: 'All Roles' }, ...ROLES.map((r) => ({ value: r, label: r }))]}
-          />
+          <div className="w-44 shrink-0">
+            <Select
+              label=""
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              options={[{ value: '', label: 'All Roles' }, ...ROLES.map((r) => ({ value: r, label: r }))]}
+            />
+          </div>
         </div>
       </Card>
 
@@ -173,58 +176,58 @@ export function UsersPage() {
         {loading ? (
           <Spinner />
         ) : users.length === 0 ? (
-          <p className="text-center text-gray-400 py-12">No users found.</p>
+          <p className="text-center text-[var(--n-text-dim)] py-12">No users found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+            <table className="neu-table">
+              <thead >
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Role</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Last Login</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
+                  <th >Name</th>
+                  <th >Email</th>
+                  <th >Role</th>
+                  <th >Status</th>
+                  <th >Last Login</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody >
                 {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
+                  <tr key={u.id} >
+                    <td >
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-navy/10 rounded-full flex items-center justify-center shrink-0">
-                          <span className="text-navy text-xs font-bold">{u.name.charAt(0).toUpperCase()}</span>
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 neu-stat-icon" style={{ width: '2rem', height: '2rem', borderRadius: '9999px' }}>
+                          <span className="text-xs font-bold" style={{ color: 'var(--n-accent)' }}>{u.name.charAt(0).toUpperCase()}</span>
                         </div>
                         <span className="font-medium">
                           {u.name}
                           {u.id === currentUser?.id && (
-                            <span className="ml-2 text-xs text-gray-400">(you)</span>
+                            <span className="ml-2 text-xs text-[var(--n-text-dim)]">(you)</span>
                           )}
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{u.email}</td>
-                    <td className="px-4 py-3">
+                    <td style={{ color: "var(--n-text-secondary)" }}>{u.email}</td>
+                    <td >
                       {u.roles[0] ? (
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[u.roles[0]] || 'bg-gray-100 text-gray-700'}`}>
+                        <span className={ROLE_COLORS[u.roles[0]] || 'neu-badge neu-badge-neutral'}>
                           {u.roles[0]}
                         </span>
                       ) : (
-                        <span className="text-gray-400 text-xs">No role</span>
+                        <span className="text-[var(--n-text-dim)] text-xs">No role</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                    <td >
+                      <Badge variant={u.is_active ? 'success' : 'danger'}>
                         {u.is_active ? 'Active' : 'Inactive'}
-                      </span>
+                      </Badge>
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">
+                    <td className="px-4 py-3 text-[var(--n-text-secondary)] text-xs">
                       {u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : 'Never'}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="text-right">
                       <button
                         onClick={() => openEdit(u)}
-                        className="p-1.5 hover:bg-blue-50 rounded text-blue-600"
+                        className="neu-btn-icon info"
                         title="Edit user"
                       >
                         <HiPencil className="w-4 h-4" />
@@ -232,7 +235,7 @@ export function UsersPage() {
                       {canManageUsers && u.id !== currentUser?.id && (
                         <button
                           onClick={() => handleDelete(u)}
-                          className="p-1.5 hover:bg-red-50 rounded text-red-600 ml-1"
+                          className="neu-btn-icon danger ml-1"
                           title="Delete user"
                         >
                           <HiTrash className="w-4 h-4" />

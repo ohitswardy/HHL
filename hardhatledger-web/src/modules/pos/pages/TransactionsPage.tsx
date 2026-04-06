@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
-import { Input } from '../../../components/ui/Input';
+import { DatePicker } from '../../../components/ui/DatePicker';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
@@ -169,8 +169,8 @@ export function TransactionsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-navy-dark">Transactions</h1>
-          <p className="text-sm text-gray-500 mt-1">{getPeriodLabel()}</p>
+          <h1 className="neu-page-title">Transactions</h1>
+          <p className="text-sm text-[var(--n-text-secondary)] mt-1">{getPeriodLabel()}</p>
         </div>
       </div>
 
@@ -178,7 +178,7 @@ export function TransactionsPage() {
       <Card className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
+            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Period</label>
             <Select
               value={period}
               onChange={(e) => setPeriod(e.target.value as 'daily' | 'weekly' | 'monthly')}
@@ -192,9 +192,9 @@ export function TransactionsPage() {
 
           {period === 'daily' && (
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
-              <Input
-                type="date"
+              <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Date</label>
+              <DatePicker
+                inline
                 value={filterDate}
                 onChange={(e) => setFilterDate(e.target.value)}
               />
@@ -202,12 +202,12 @@ export function TransactionsPage() {
           )}
 
           <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Search Transaction</label>
+            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Search Transaction</label>
             <div className="flex gap-2">
               <div className="flex-1 relative">
-                <HiSearch className="absolute left-3 top-2.5 text-gray-400 w-4 h-4" />
+                <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
                 <input
-                  className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-navy/30"
+                  className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
                   placeholder="Transaction #, Client name..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -218,8 +218,9 @@ export function TransactionsPage() {
               <div className="relative" ref={exportRef}>
                 <button
                   onClick={() => setExportOpen(!exportOpen)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-navy text-white rounded-lg hover:bg-navy-dark transition-colors disabled:opacity-50"
+                  className="neu-btn neu-btn-secondary"
                   disabled={exporting || transactions.length === 0}
+                  style={{ padding: '0.625rem 1rem' }}
                 >
                   <HiDocumentDownload className="w-4 h-4" />
                   Export
@@ -228,28 +229,16 @@ export function TransactionsPage() {
 
                 {/* Export Dropdown */}
                 {exportOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
-                    <button
-                      onClick={handleExportPdf}
-                      disabled={exporting}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 text-sm flex items-center gap-2 disabled:opacity-50"
-                    >
+                  <div className="neu-dropdown">
+                    <button onClick={handleExportPdf} disabled={exporting} className="neu-dropdown-item">
                       {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
                       Export as PDF
                     </button>
-                    <button
-                      onClick={handleExportCsv}
-                      disabled={exporting}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 text-sm flex items-center gap-2 disabled:opacity-50"
-                    >
+                    <button onClick={handleExportCsv} disabled={exporting} className="neu-dropdown-item">
                       {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
                       Export as CSV
                     </button>
-                    <button
-                      onClick={handleExportXlsx}
-                      disabled={exporting}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm flex items-center gap-2 disabled:opacity-50"
-                    >
+                    <button onClick={handleExportXlsx} disabled={exporting} className="neu-dropdown-item">
                       {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
                       Export as Excel
                     </button>
@@ -269,45 +258,41 @@ export function TransactionsPage() {
           </div>
         ) : transactions.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-gray-500">No transactions found</p>
+            <p style={{ color: "var(--n-text-secondary)" }}>No transactions found</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="neu-table">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Transaction #</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Date & Time</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Client</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Cashier</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600">Subtotal</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600">Discount</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600">Total</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600">Actions</th>
+                <tr>
+                  <th>Transaction #</th>
+                  <th>Date & Time</th>
+                  <th>Client</th>
+                  <th>Type</th>
+                  <th>Cashier</th>
+                  <th className="text-right">Subtotal</th>
+                  <th className="text-right">Discount</th>
+                  <th className="text-right">Total</th>
+                  <th className="text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody>
                 {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-sm font-medium text-navy-dark">{tx.transaction_number}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{new Date(tx.created_at).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{tx.client?.business_name || 'Walk-in'}</td>
-                    <td className="px-6 py-4 text-sm">
+                  <tr key={tx.id}>
+                    <td className="font-medium font-mono text-xs">{tx.transaction_number}</td>
+                    <td style={{ color: 'var(--n-text-secondary)' }}>{new Date(tx.created_at).toLocaleString()}</td>
+                    <td style={{ color: 'var(--n-text-secondary)' }}>{tx.client?.business_name || 'Walk-in'}</td>
+                    <td>
                       <Badge variant={tx.fulfillment_type === 'delivery' ? 'info' : 'success'}>
                         {tx.fulfillment_type}
                       </Badge>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{tx.user?.name || 'Unknown'}</td>
-                    <td className="px-6 py-4 text-sm text-right text-gray-600">{parseFloat(tx.subtotal).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-sm text-right text-red-600">{parseFloat(tx.discount_amount).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-sm text-right font-semibold text-navy-dark">{parseFloat(tx.total_amount).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => handlePrintReceipt(tx.id)}
-                        className="p-2 text-amber hover:bg-amber/10 rounded-lg transition-colors"
-                        title="Print Receipt"
-                      >
+                    <td style={{ color: 'var(--n-text-secondary)' }}>{tx.user?.name || 'Unknown'}</td>
+                    <td className="text-right" style={{ color: 'var(--n-text-secondary)' }}>{parseFloat(tx.subtotal).toFixed(2)}</td>
+                    <td className="text-right" style={{ color: 'var(--n-danger)' }}>{parseFloat(tx.discount_amount).toFixed(2)}</td>
+                    <td className="text-right font-semibold">{parseFloat(tx.total_amount).toFixed(2)}</td>
+                    <td className="text-center">
+                      <button onClick={() => handlePrintReceipt(tx.id)} className="neu-btn-icon info" title="Print Receipt">
                         <HiPrinter className="w-4 h-4" />
                       </button>
                     </td>
@@ -320,43 +305,23 @@ export function TransactionsPage() {
 
         {/* Pagination */}
         {meta.last_page > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-600">
+          <div className="neu-pagination">
+            <p className="neu-pagination-info">
               Showing {transactions.length > 0 ? (meta.current_page - 1) * meta.per_page + 1 : 0} to{' '}
               {Math.min(meta.current_page * meta.per_page, meta.total)} of {meta.total} transactions
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page === 1}
-                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+            <div className="neu-pagination-buttons">
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1} className="neu-pagination-btn">
                 <HiChevronLeft className="w-4 h-4" />
               </button>
-
               {getPageNumbers(page, meta.last_page).map((p, i) =>
                 p === null ? (
-                  <span key={`dots-${i}`} className="px-2 py-2">…</span>
+                  <span key={`dots-${i}`} className="neu-pagination-dots">…</span>
                 ) : (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
-                      page === p
-                        ? 'bg-navy text-white'
-                        : 'border border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {p}
-                  </button>
+                  <button key={p} onClick={() => setPage(p)} className={`neu-pagination-btn ${page === p ? 'active' : ''}`}>{p}</button>
                 )
               )}
-
-              <button
-                onClick={() => setPage(Math.min(meta.last_page, page + 1))}
-                disabled={page === meta.last_page}
-                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <button onClick={() => setPage(Math.min(meta.last_page, page + 1))} disabled={page === meta.last_page} className="neu-pagination-btn">
                 <HiChevronRight className="w-4 h-4" />
               </button>
             </div>
