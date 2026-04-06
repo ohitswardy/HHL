@@ -118,6 +118,41 @@ class ProductController extends Controller
         return response()->json(['price' => $price]);
     }
 
+    public function updateTierPrices(Request $request, Product $product): JsonResponse
+    {
+        $request->validate([
+            'prices'                   => 'required|array',
+            'prices.*.client_tier_id'  => 'required|integer|exists:client_tiers,id',
+            'prices.*.price'           => 'nullable|numeric|min:0',
+        ]);
+
+        DB::transaction(function () use ($request, $product) {
+            foreach ($request->prices as $tp) {
+                if (is_null($tp['price'])) {
+                    ProductPrice::where([
+                        'product_id'     => $product->id,
+                        'client_tier_id' => $tp['client_tier_id'],
+                    ])->delete();
+                } else {
+                    ProductPrice::updateOrCreate(
+                        ['product_id' => $product->id, 'client_tier_id' => $tp['client_tier_id']],
+                        ['price'      => $tp['price']]
+                    );
+                }
+            }
+        });
+
+        $product->load('tierPrices');
+
+        return response()->json([
+            'data' => $product->tierPrices->map(fn ($tp) => [
+                'id'             => $tp->id,
+                'client_tier_id' => $tp->client_tier_id,
+                'price'          => (float) $tp->price,
+            ]),
+        ]);
+    }
+
     public function exportPdf(): \Illuminate\Http\Response
     {
         $products = Product::with(['category', 'stock'])

@@ -8,6 +8,7 @@ import { ProductsPage } from './modules/inventory/pages/ProductsPage';
 import { CategoriesPage } from './modules/inventory/pages/CategoriesPage';
 import { StockPage } from './modules/inventory/pages/StockPage';
 import { MovementsPage } from './modules/inventory/pages/MovementsPage';
+import { TierPricingPage } from './modules/inventory/pages/TierPricingPage';
 import { POSPage } from './modules/pos/pages/POSPage';
 import { TransactionsPage } from './modules/pos/pages/TransactionsPage';
 import { PurchaseOrdersPage } from './modules/pos/pages/PurchaseOrdersPage';
@@ -42,6 +43,7 @@ function App() {
           <Route path="/inventory/categories" element={<CategoriesPage />} />
           <Route path="/inventory/stock" element={<StockPage />} />
           <Route path="/inventory/movements" element={<MovementsPage />} />
+          <Route path="/inventory/pricing" element={<TierPricingPage />} />
 
           {/* POS */}
           <Route path="/pos" element={<POSPage />} />

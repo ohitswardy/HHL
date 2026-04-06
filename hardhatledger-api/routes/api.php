@@ -84,7 +84,10 @@ Route::prefix('v1')->group(function () {
             Route::post('/products', [ProductController::class, 'store']);
             Route::post('/products/import', [ProductController::class, 'import']);
         });
-        Route::middleware('permission:products.edit')->put('/products/{product}', [ProductController::class, 'update']);
+        Route::middleware('permission:products.edit')->group(function () {
+            Route::put('/products/{product}', [ProductController::class, 'update']);
+            Route::put('/products/{product}/tier-prices', [ProductController::class, 'updateTierPrices']);
+        });
         Route::middleware('permission:products.delete')->delete('/products/{product}', [ProductController::class, 'destroy']);
 
         // Inventory

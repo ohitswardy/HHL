@@ -10,6 +10,7 @@ interface CartState {
   updateQuantity: (productId: number, quantity: number) => void;
   updateDiscount: (productId: number, discount: number) => void;
   setClient: (client: Client | null) => void;
+  repriceAll: (priceMap: Record<number, number>) => void;
   setFulfillmentType: (type: 'delivery' | 'pickup') => void;
   getSubtotal: () => number;
   getDiscountTotal: () => number;
@@ -65,6 +66,15 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   setClient: (client) => set({ client }),
+
+  repriceAll: (priceMap) => {
+    const items = get().items.map((item) => {
+      const newPrice = priceMap[item.product.id] ?? item.unit_price;
+      return { ...item, unit_price: newPrice, line_total: item.quantity * newPrice - item.discount };
+    });
+    set({ items });
+  },
+
   setFulfillmentType: (type) => set({ fulfillmentType: type }),
 
   getSubtotal: () => get().items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0),
