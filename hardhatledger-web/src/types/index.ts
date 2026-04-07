@@ -137,6 +137,7 @@ export interface Payment {
   payment_method: 'cash' | 'card' | 'bank_transfer' | 'check' | 'credit';
   amount: number;
   reference_number: string | null;
+  due_date: string | null;
   status: 'pending' | 'confirmed' | 'failed';
   paid_at: string | null;
 }

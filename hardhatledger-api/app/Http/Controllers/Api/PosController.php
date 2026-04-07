@@ -59,11 +59,11 @@ class PosController extends Controller
                 : 0;
             $totalAmount = $subtotal - $discountAmount + $deliveryFee;
 
-            // Determine sale status: pending if all payments are deferred (bank_transfer/check/credit)
+            // Determine sale status: pending if any payments are deferred (bank_transfer/check/credit)
             $methods = collect($request->payments)->pluck('payment_method');
             $hasImmediateMethod = $methods->intersect(['cash', 'card'])->isNotEmpty();
-            $hasDeferredMethod  = $methods->intersect(['bank_transfer', 'check'])->isNotEmpty();
-            $saleStatus = ($hasDeferredMethod && !$hasImmediateMethod) ? 'pending' : 'completed';
+            $hasDeferredMethod  = $methods->intersect(['bank_transfer', 'check', 'credit'])->isNotEmpty();
+            $saleStatus = $hasDeferredMethod ? 'pending' : 'completed';
 
             // Create transaction
             $sale = SalesTransaction::create([
@@ -100,6 +100,7 @@ class PosController extends Controller
                     'reference_number' => $payment['reference_number'] ?? null,
                     'status'           => $isPending ? 'pending' : 'confirmed',
                     'paid_at'          => $isPending ? null : now(),
+                    'due_date'         => $payment['due_date'] ?? null,
                 ]);
             }
 
@@ -244,19 +245,75 @@ class PosController extends Controller
         $sale->update(['status' => 'completed']);
         $sale->payments()
             ->where('status', 'pending')
-            ->whereIn('payment_method', ['bank_transfer', 'check'])
+            ->whereIn('payment_method', ['bank_transfer', 'check', 'credit'])
             ->update(['status' => 'confirmed', 'paid_at' => now()]);
 
         // Clear outstanding balance for the now-confirmed deferred payments
         if ($sale->client_id) {
             $sale->load('client');
             $deferredAmount = $sale->payments()
-                ->whereIn('payment_method', ['bank_transfer', 'check'])
+                ->whereIn('payment_method', ['bank_transfer', 'check', 'credit'])
                 ->sum('amount');
             if ($deferredAmount > 0) {
                 $sale->client->decrement('outstanding_balance', $deferredAmount);
             }
         }
+
+        $sale->load(['client.tier', 'user', 'items.product', 'payments']);
+        return response()->json(['data' => new SalesTransactionResource($sale)]);
+    }
+
+    public function recordPayment(Request $request, SalesTransaction $sale): JsonResponse
+    {
+        if ($sale->status === 'voided') {
+            return response()->json(['message' => 'Cannot record payment on a voided transaction.'], 422);
+        }
+
+        if ($sale->status === 'completed') {
+            return response()->json(['message' => 'Transaction is already fully paid.'], 422);
+        }
+
+        $request->validate([
+            'payment_method'   => ['required', 'in:cash,card,bank_transfer,check'],
+            'amount'           => ['required', 'numeric', 'min:0.01'],
+            'reference_number' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $balanceDue = $sale->balance_due;
+
+        if ($request->amount > $balanceDue + 0.01) {
+            return response()->json(['message' => "Payment amount exceeds balance due (₱" . number_format($balanceDue, 2) . ")."], 422);
+        }
+
+        DB::transaction(function () use ($request, $sale, $balanceDue) {
+            $isPending = in_array($request->payment_method, ['bank_transfer', 'check']);
+
+            // Create the new payment record
+            $sale->payments()->create([
+                'payment_method'   => $request->payment_method,
+                'amount'           => $request->amount,
+                'reference_number' => $request->reference_number,
+                'status'           => $isPending ? 'pending' : 'confirmed',
+                'paid_at'          => $isPending ? null : now(),
+                'branch_id'        => $sale->branch_id ?? 1,
+            ]);
+
+            // Decrement client outstanding balance for the amount being paid
+            if ($sale->client_id) {
+                $sale->load('client');
+                $sale->client->decrement('outstanding_balance', min($request->amount, $balanceDue));
+            }
+
+            // Refresh to recalculate balance_due
+            $sale->refresh();
+
+            // Auto-complete if the real (non-credit) payments now cover the full amount
+            if ($sale->balance_due <= 0.01) {
+                $sale->update(['status' => 'completed']);
+                // Note: pending credit payments are intentionally left as-is.
+                // They are AR tracking entries — the new cash/card payment is the actual receipt.
+            }
+        });
 
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
         return response()->json(['data' => new SalesTransactionResource($sale)]);

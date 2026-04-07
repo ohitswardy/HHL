@@ -16,14 +16,16 @@ class Payment extends Model
         'reference_number',
         'status',
         'paid_at',
+        'due_date',
         'branch_id',
     ];
 
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:2',
-            'paid_at' => 'datetime',
+            'amount'   => 'decimal:2',
+            'paid_at'  => 'datetime',
+            'due_date' => 'date',
         ];
     }
 

@@ -4,10 +4,11 @@ import { Card } from '../../../components/ui/Card';
 import { Select } from '../../../components/ui/Select';
 import { Modal } from '../../../components/ui/Modal';
 import { Badge } from '../../../components/ui/Badge';
-import { HiSearch, HiPlus, HiMinus, HiTrash, HiShoppingCart, HiLightningBolt } from 'react-icons/hi';
+import { HiSearch, HiPlus, HiMinus, HiTrash, HiShoppingCart, HiLightningBolt, HiClock } from 'react-icons/hi';
 import { useCartStore } from '../../../stores/cartStore';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
+import { PaymentTermsModal, type PaymentTermsData } from '../components/PaymentTermsModal';
 import type { Product, Client, SalesTransaction, Category } from '../../../types';
 
 export function POSPage() {
@@ -26,6 +27,8 @@ export function POSPage() {
   const [skuInput, setSkuInput] = useState('');
   const [deliveryFee, setDeliveryFee] = useState('');
   const [saleNotes, setSaleNotes] = useState('');
+  const [paymentTermsModal, setPaymentTermsModal] = useState(false);
+  const [paymentTermsData, setPaymentTermsData] = useState<PaymentTermsData | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const skuRef = useRef<HTMLInputElement>(null);
 
@@ -111,6 +114,36 @@ export function POSPage() {
     setConfirmSaleModal(false);
     setProcessing(true);
     try {
+      const fee = cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0;
+      const grandTotal = cart.getTotal() + fee;
+
+      // Build payments array — handle payment_terms specially
+      let paymentsPayload: Array<{
+        payment_method: string;
+        amount: number;
+        reference_number?: string | null;
+        due_date?: string | null;
+      }>;
+
+      if (paymentMethod === 'payment_terms' && paymentTermsData) {
+        paymentsPayload = [];
+        if (paymentTermsData.downPayment > 0) {
+          paymentsPayload.push({
+            payment_method:   paymentTermsData.downPaymentMethod,
+            amount:           paymentTermsData.downPayment,
+            reference_number: paymentTermsData.referenceNumber || null,
+          });
+        }
+        paymentsPayload.push({
+          payment_method:   'credit',
+          amount:           Math.max(0, grandTotal - paymentTermsData.downPayment),
+          reference_number: paymentTermsData.referenceNumber || null,
+          due_date:         paymentTermsData.dueDate,
+        });
+      } else {
+        paymentsPayload = [{ payment_method: paymentMethod, amount: grandTotal }];
+      }
+
       const payload = {
         client_id: cart.client?.id || null,
         fulfillment_type: cart.fulfillmentType,
@@ -119,15 +152,22 @@ export function POSPage() {
           quantity: i.quantity,
           discount: i.discount,
         })),
-        payments: [{ payment_method: paymentMethod, amount: cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0) }],
-        delivery_fee: cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0,
-        notes: saleNotes.trim() || null,
+        payments: paymentsPayload,
+        delivery_fee: fee,
+        notes: [
+          saleNotes.trim(),
+          paymentMethod === 'payment_terms' && paymentTermsData?.notes
+            ? `Payment Terms Notes: ${paymentTermsData.notes}`
+            : null,
+        ].filter(Boolean).join('\n') || null,
       };
       const res = await api.post('/pos/sales', payload);
       setLastSale(res.data.data);
       toast.success(`Sale completed: ${res.data.data.transaction_number}`);
       cart.clear();
       setSaleNotes('');
+      setPaymentTermsData(null);
+      setPaymentMethod('cash');
       setProductRefresh((n) => n + 1);
       setReceiptModal(true);
     } catch (err: any) {
@@ -289,20 +329,74 @@ export function POSPage() {
             <div className="flex justify-between text-lg font-bold" style={{ fontFamily: 'var(--n-font-display)' }}><span>TOTAL</span><span>{(cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0)).toFixed(2)}</span></div>
 
             <div className="grid grid-cols-2 gap-2">
-              <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} options={[
-                { value: 'cash', label: 'Cash' },
-                { value: 'card', label: 'Card' },
-                { value: 'bank_transfer', label: 'Bank Transfer' },
-                { value: 'check', label: 'Check' },
-                { value: 'credit', label: 'Credit' },
-              ]} />
+              <Select
+                value={paymentMethod}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPaymentMethod(v);
+                  if (v === 'payment_terms') {
+                    setPaymentTermsModal(true);
+                  } else {
+                    setPaymentTermsData(null);
+                  }
+                }}
+                options={[
+                  { value: 'cash',          label: 'Cash' },
+                  { value: 'card',          label: 'Card' },
+                  { value: 'bank_transfer', label: 'Bank Transfer' },
+                  { value: 'check',         label: 'Check' },
+                  { value: 'credit',        label: 'Credit' },
+                  { value: 'payment_terms', label: 'Payment Terms' },
+                ]}
+              />
               <Select value={cart.fulfillmentType} onChange={(e) => { cart.setFulfillmentType(e.target.value as 'delivery' | 'pickup'); if (e.target.value !== 'delivery') setDeliveryFee(''); }} options={[
                 { value: 'pickup', label: 'Pickup' },
                 { value: 'delivery', label: 'Delivery' },
               ]} />
             </div>
 
-            <Button variant="amber" size="lg" className="w-full" onClick={handleCompleteSale} loading={processing} disabled={cart.items.length === 0}>
+            {/* Payment terms active indicator */}
+            {paymentMethod === 'payment_terms' && paymentTermsData && (
+              <button
+                onClick={() => setPaymentTermsModal(true)}
+                className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+                style={{
+                  background: 'var(--n-surface-raised, var(--n-surface))',
+                  border: '1px solid var(--n-accent)',
+                  color: 'var(--n-accent)',
+                }}
+              >
+                <HiClock className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">
+                  Net {paymentTermsData.termsDays}d — Due {paymentTermsData.dueDate}
+                  {paymentTermsData.downPayment > 0 && ` — Down ₱${paymentTermsData.downPayment.toFixed(2)}`}
+                </span>
+                <span className="underline">Edit</span>
+              </button>
+            )}
+            {paymentMethod === 'payment_terms' && !paymentTermsData && (
+              <button
+                onClick={() => setPaymentTermsModal(true)}
+                className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+                style={{
+                  background: 'var(--n-surface-raised, var(--n-surface))',
+                  border: '1px dashed var(--n-danger)',
+                  color: 'var(--n-danger)',
+                }}
+              >
+                <HiClock className="w-4 h-4 shrink-0" />
+                <span>Click to set payment terms before completing sale</span>
+              </button>
+            )}
+
+            <Button
+              variant="amber"
+              size="lg"
+              className="w-full"
+              onClick={handleCompleteSale}
+              loading={processing}
+              disabled={cart.items.length === 0 || (paymentMethod === 'payment_terms' && !paymentTermsData)}
+            >
               Complete Sale (F9)
             </Button>
             <Button variant="secondary" size="sm" className="w-full" onClick={cart.clear}>Clear Cart</Button>
@@ -330,8 +424,20 @@ export function POSPage() {
             </div>
             <div className="flex justify-between">
               <span style={{ color: 'var(--n-text-secondary)' }}>Payment</span>
-              <span className="font-medium" style={{ textTransform: 'capitalize' }}>{paymentMethod.replace('_', ' ')}</span>
+              {paymentMethod === 'payment_terms' && paymentTermsData ? (
+                <span className="font-medium" style={{ color: 'var(--n-accent)' }}>
+                  Net {paymentTermsData.termsDays}d — due {paymentTermsData.dueDate}
+                </span>
+              ) : (
+                <span className="font-medium" style={{ textTransform: 'capitalize' }}>{paymentMethod.replace('_', ' ')}</span>
+              )}
             </div>
+            {paymentMethod === 'payment_terms' && paymentTermsData && paymentTermsData.downPayment > 0 && (
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--n-text-secondary)' }}>Down Payment ({paymentTermsData.downPaymentMethod})</span>
+                <span className="font-medium" style={{ color: 'var(--n-success)' }}>₱{paymentTermsData.downPayment.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span style={{ color: 'var(--n-text-secondary)' }}>Fulfillment</span>
               <span className="font-medium" style={{ textTransform: 'capitalize' }}>{cart.fulfillmentType}</span>
@@ -362,6 +468,30 @@ export function POSPage() {
               maxLength={500}
             />
           </div>
+          {paymentMethod === 'payment_terms' && paymentTermsData && (
+            <div className="rounded-lg px-3 py-2 text-xs space-y-1" style={{ background: 'var(--n-surface-raised, var(--n-surface))', border: '1px solid var(--n-accent)' }}>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--n-text-secondary)' }}>Terms</span>
+                <span className="font-medium" style={{ color: 'var(--n-accent)' }}>Net {paymentTermsData.termsDays}d</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--n-text-secondary)' }}>Due Date</span>
+                <span className="font-medium">{paymentTermsData.dueDate}</span>
+              </div>
+              {paymentTermsData.downPayment > 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--n-text-secondary)' }}>Down Payment ({paymentTermsData.downPaymentMethod})</span>
+                  <span className="font-medium" style={{ color: 'var(--n-success)' }}>₱{paymentTermsData.downPayment.toFixed(2)}</span>
+                </div>
+              )}
+              {paymentTermsData.referenceNumber && (
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--n-text-secondary)' }}>Reference #</span>
+                  <span className="font-medium">{paymentTermsData.referenceNumber}</span>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex justify-between text-lg font-bold pt-2" style={{ borderTop: '1px solid var(--n-divider)', fontFamily: 'var(--n-font-display)' }}>
             <span>TOTAL</span>
             <span className="text-amber-dark">{(cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0)).toFixed(2)}</span>
@@ -375,35 +505,83 @@ export function POSPage() {
         </div>
       </Modal>
 
+      {/* Payment Terms Modal */}
+      <PaymentTermsModal
+        isOpen={paymentTermsModal}
+        onClose={() => {
+          if (!paymentTermsData) setPaymentMethod('cash');
+          setPaymentTermsModal(false);
+        }}
+        onConfirm={(data) => {
+          setPaymentTermsData(data);
+          setPaymentTermsModal(false);
+          toast.success(`Terms set: Net ${data.termsDays}d — due ${data.dueDate}`);
+        }}
+        totalAmount={cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0)}
+        initialData={paymentTermsData}
+      />
+
       {/* Receipt Modal */}
       <Modal isOpen={receiptModal} onClose={() => setReceiptModal(false)} title="Sale Complete" width="md">
-        {lastSale && (
-          <div className="text-center space-y-4">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ background: 'var(--n-success-glow)' }}>
-              <span className="text-2xl" style={{ color: 'var(--n-success)' }}>&#10003;</span>
+        {lastSale && (() => {
+          const creditPayment = lastSale.payments?.find((p) => p.payment_method === 'credit');
+          const downPayments  = lastSale.payments?.filter((p) => p.payment_method !== 'credit') ?? [];
+          const isTermsSale   = !!creditPayment;
+          return (
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ background: 'var(--n-success-glow)' }}>
+                <span className="text-2xl" style={{ color: 'var(--n-success)' }}>&#10003;</span>
+              </div>
+              <h3 className="text-xl font-bold" style={{ fontFamily: 'var(--n-font-display)' }}>{lastSale.transaction_number}</h3>
+              <p className="text-3xl font-bold text-amber-dark">{lastSale.total_amount.toLocaleString('en', { minimumFractionDigits: 2 })}</p>
+              <p className="text-sm" style={{ color: 'var(--n-text-secondary)' }}>
+                {lastSale.client?.business_name || 'Walk-in Customer'} | {lastSale.fulfillment_type}
+              </p>
+
+              {/* Payment Terms summary block */}
+              {isTermsSale && (
+                <div className="text-left rounded-lg px-4 py-3 space-y-1.5 text-sm" style={{ background: 'var(--n-surface-raised, var(--n-surface))', border: '1px solid var(--n-accent)' }}>
+                  <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--n-accent)' }}>Payment Terms Applied</p>
+                  {creditPayment?.due_date && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--n-text-secondary)' }}>Due Date</span>
+                      <span className="font-semibold">{creditPayment.due_date}</span>
+                    </div>
+                  )}
+                  {downPayments.length > 0 && downPayments.map((dp) => (
+                    <div key={dp.id} className="flex justify-between">
+                      <span style={{ color: 'var(--n-text-secondary)' }}>Down Payment ({dp.payment_method.replace('_', ' ')})</span>
+                      <span className="font-semibold" style={{ color: 'var(--n-success)' }}>₱{dp.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between pt-1" style={{ borderTop: '1px solid var(--n-divider)' }}>
+                    <span style={{ color: 'var(--n-text-secondary)' }}>Balance on Credit</span>
+                    <span className="font-bold text-amber-dark">₱{creditPayment.amount.toFixed(2)}</span>
+                  </div>
+                  <p className="text-xs pt-1" style={{ color: 'var(--n-text-dim)' }}>
+                    Status is <strong>Pending</strong> — mark as Completed once payment is received.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3 justify-center pt-2">
+                <Button variant="outline" onClick={async () => {
+                  try {
+                    const res = await api.get(`/pos/sales/${lastSale.id}/receipt`, { responseType: 'blob' });
+                    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                    const a = document.createElement('a');
+                    a.href = url; a.download = `receipt-${lastSale.transaction_number}.pdf`; a.click();
+                    URL.revokeObjectURL(url);
+                    toast.success('Receipt downloaded');
+                  } catch { toast.error('Failed to download receipt'); }
+                }}>
+                  Download Receipt
+                </Button>
+                <Button variant="amber" onClick={() => setReceiptModal(false)}>New Sale</Button>
+              </div>
             </div>
-            <h3 className="text-xl font-bold" style={{ fontFamily: 'var(--n-font-display)' }}>{lastSale.transaction_number}</h3>
-            <p className="text-3xl font-bold text-amber-dark">{lastSale.total_amount.toLocaleString('en', { minimumFractionDigits: 2 })}</p>
-            <p className="text-sm" style={{ color: "var(--n-text-secondary)" }}>
-              {lastSale.client?.business_name || 'Walk-in Customer'} | {lastSale.fulfillment_type}
-            </p>
-            <div className="flex gap-3 justify-center pt-4">
-              <Button variant="outline" onClick={async () => {
-                try {
-                  const res = await api.get(`/pos/sales/${lastSale.id}/receipt`, { responseType: 'blob' });
-                  const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-                  const a = document.createElement('a');
-                  a.href = url; a.download = `receipt-${lastSale.transaction_number}.pdf`; a.click();
-                  URL.revokeObjectURL(url);
-                  toast.success('Receipt downloaded');
-                } catch { toast.error('Failed to download receipt'); }
-              }}>
-                Download Receipt
-              </Button>
-              <Button variant="amber" onClick={() => setReceiptModal(false)}>New Sale</Button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
 
     </div>

@@ -6,11 +6,12 @@ import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiSearch, HiDocumentDownload, HiChevronDown, HiPrinter, HiChevronLeft, HiChevronRight, HiCheck, HiBan, HiExclamation, HiPencilAlt, HiEye } from 'react-icons/hi';
+import { HiSearch, HiDocumentDownload, HiChevronDown, HiPrinter, HiChevronLeft, HiChevronRight, HiCheck, HiBan, HiExclamation, HiPencilAlt, HiEye, HiCash } from 'react-icons/hi';
 import dayjs from 'dayjs';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { SalesTransaction } from '../../../types';
+import { Input } from '../../../components/ui/Input';
 
 type ConfirmAction = { type: 'complete' | 'void'; transaction: SalesTransaction } | null;
 
@@ -48,6 +49,13 @@ export function TransactionsPage() {
   const [editNotes, setEditNotes] = useState('');
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Record payment
+  const [recordingPaymentTx, setRecordingPaymentTx] = useState<SalesTransaction | null>(null);
+  const [rpMethod, setRpMethod] = useState('cash');
+  const [rpAmount, setRpAmount] = useState('');
+  const [rpReference, setRpReference] = useState('');
+  const [rpSaving, setRpSaving] = useState(false);
 
   // Close export dropdown on outside click
   useEffect(() => {
@@ -247,6 +255,44 @@ export function TransactionsPage() {
       toast.error(err.response?.data?.message || 'Failed to void transaction');
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const openRecordPayment = async (tx: SalesTransaction) => {
+    try {
+      const res = await api.get(`/pos/sales/${tx.id}`);
+      const full: SalesTransaction = res.data.data;
+      setRecordingPaymentTx(full);
+      setRpMethod('cash');
+      setRpAmount((full.balance_due ?? 0).toFixed(2));
+      setRpReference('');
+    } catch {
+      toast.error('Failed to load transaction');
+    }
+  };
+
+  const handleRecordPayment = async () => {
+    if (!recordingPaymentTx) return;
+    setRpSaving(true);
+    try {
+      const payload = {
+        payment_method: rpMethod,
+        amount: parseFloat(rpAmount) || 0,
+        reference_number: rpReference.trim() || null,
+      };
+      const res = await api.post(`/pos/sales/${recordingPaymentTx.id}/record-payment`, payload);
+      const updated = res.data.data;
+      setTransactions((prev) => prev.map((t) => t.id === recordingPaymentTx.id ? updated : t));
+      // Also update viewingTx if it's open for the same transaction
+      if (viewingTx?.id === recordingPaymentTx.id) {
+        setViewingTx(updated);
+      }
+      toast.success(updated.status === 'completed' ? 'Payment recorded — transaction completed!' : 'Payment recorded');
+      setRecordingPaymentTx(null);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to record payment');
+    } finally {
+      setRpSaving(false);
     }
   };
 
@@ -463,7 +509,11 @@ export function TransactionsPage() {
                       </Badge>
                     </td>
                     <td style={{ color: 'var(--n-text-secondary)', textTransform: 'capitalize' }}>
-                      {tx.payments?.map((p) => p.payment_method.replace('_', ' ')).join(', ') || '—'}
+                      {tx.payments?.map((p) => {
+                        const label = p.payment_method.replace('_', ' ');
+                        const due   = p.due_date ? ` (due ${p.due_date})` : '';
+                        return label + due;
+                      }).join(', ') || '—'}
                     </td>
                     <td style={{ color: 'var(--n-text-secondary)' }}>{tx.user?.name || 'Unknown'}</td>
                     <td className="text-right" style={{ color: 'var(--n-text-secondary)' }}>{tx.subtotal.toFixed(2)}</td>
@@ -481,14 +531,23 @@ export function TransactionsPage() {
                     <td className="text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
                         {tx.status === 'pending' && (
-                          <button
-                            onClick={() => setConfirmAction({ type: 'complete', transaction: tx })}
-                            disabled={updatingId === tx.id}
-                            className="neu-btn-icon success"
-                            title="Mark as Completed"
-                          >
-                            {updatingId === tx.id ? <Spinner size="sm" /> : <HiCheck className="w-4 h-4" />}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => openRecordPayment(tx)}
+                              className="neu-btn-icon info"
+                              title="Record Payment"
+                            >
+                              <HiCash className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setConfirmAction({ type: 'complete', transaction: tx })}
+                              disabled={updatingId === tx.id}
+                              className="neu-btn-icon success"
+                              title="Mark as Completed"
+                            >
+                              {updatingId === tx.id ? <Spinner size="sm" /> : <HiCheck className="w-4 h-4" />}
+                            </button>
+                          </>
                         )}
                         {(tx.status === 'pending' || tx.status === 'completed') && (
                           <button
@@ -591,6 +650,7 @@ export function TransactionsPage() {
                     <th>Payment Method</th>
                     <th className="text-right">Amount</th>
                     <th>Reference #</th>
+                    <th>Due Date</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -600,6 +660,9 @@ export function TransactionsPage() {
                       <td style={{ textTransform: 'capitalize' }}>{p.payment_method.replace('_', ' ')}</td>
                       <td className="text-right font-semibold">₱{p.amount.toFixed(2)}</td>
                       <td style={{ color: 'var(--n-text-secondary)' }}>{p.reference_number || '—'}</td>
+                      <td style={{ color: p.due_date ? 'var(--n-accent)' : 'var(--n-text-dim)', fontWeight: p.due_date ? 600 : 400 }}>
+                        {p.due_date ?? '—'}
+                      </td>
                       <td>
                         <Badge variant={p.status === 'confirmed' ? 'success' : p.status === 'pending' ? 'warning' : 'danger'}>
                           {p.status}
@@ -705,6 +768,14 @@ export function TransactionsPage() {
             </Button>
             <div className="flex gap-3">
               <Button variant="secondary" onClick={() => setViewingTx(null)}>Close</Button>
+              {viewingTx.status === 'pending' && (viewingTx.balance_due ?? 0) > 0 && (
+                <Button
+                  variant="primary"
+                  onClick={() => { setViewingTx(null); openRecordPayment(viewingTx); }}
+                >
+                  <HiCash className="w-4 h-4 mr-2" /> Record Payment
+                </Button>
+              )}
               {viewingTx.status !== 'voided' && (
                 <Button
                   variant="amber"
@@ -894,6 +965,86 @@ export function TransactionsPage() {
                 loading={updatingId === confirmAction.transaction.id}
               >
                 {confirmAction.type === 'void' ? 'Yes, Void It' : 'Yes, Mark Completed'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Record Payment Modal */}
+      <Modal
+        isOpen={recordingPaymentTx !== null}
+        onClose={() => !rpSaving && setRecordingPaymentTx(null)}
+        title="Record Payment"
+        width="sm"
+      >
+        {recordingPaymentTx && (
+          <div className="space-y-4">
+            {/* Transaction summary */}
+            <div className="rounded-lg p-3 space-y-1 text-sm" style={{ background: 'var(--n-input-bg)' }}>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--n-text-secondary)' }}>Transaction</span>
+                <span className="font-mono font-semibold">{recordingPaymentTx.transaction_number}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--n-text-secondary)' }}>Total Amount</span>
+                <span>₱{recordingPaymentTx.total_amount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--n-text-secondary)' }}>Already Paid</span>
+                <span className="text-green-700">₱{(recordingPaymentTx.total_paid ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-bold pt-1" style={{ borderTop: '1px solid var(--n-divider)' }}>
+                <span style={{ color: 'var(--n-danger)' }}>Balance Due</span>
+                <span style={{ color: 'var(--n-danger)' }}>₱{(recordingPaymentTx.balance_due ?? 0).toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Payment method */}
+            <Select
+              label="Payment Method"
+              value={rpMethod}
+              onChange={(e) => setRpMethod(e.target.value)}
+              options={[
+                { value: 'cash', label: 'Cash' },
+                { value: 'card', label: 'Card' },
+                { value: 'bank_transfer', label: 'Bank Transfer' },
+                { value: 'check', label: 'Check' },
+              ]}
+            />
+
+            {/* Amount */}
+            <Input
+              label="Amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              max={(recordingPaymentTx.balance_due ?? 0).toFixed(2)}
+              value={rpAmount}
+              onChange={(e) => setRpAmount(e.target.value)}
+              placeholder="0.00"
+            />
+
+            {/* Reference number */}
+            {(rpMethod === 'bank_transfer' || rpMethod === 'check') && (
+              <Input
+                label="Reference Number"
+                value={rpReference}
+                onChange={(e) => setRpReference(e.target.value)}
+                placeholder="e.g. BDO Transfer Ref# 12345"
+              />
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 justify-end pt-2">
+              <Button variant="secondary" onClick={() => setRecordingPaymentTx(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                onClick={handleRecordPayment}
+                loading={rpSaving}
+                disabled={!rpAmount || parseFloat(rpAmount) <= 0}
+              >
+                <HiCash className="w-4 h-4 mr-2" /> Record Payment
               </Button>
             </div>
           </div>
