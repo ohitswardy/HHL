@@ -73,7 +73,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
           <img src="/HHLicon.png" alt="HardhatLedger" className="shrink-0" style={{ width: 36, height: 36, objectFit: 'contain' }} />
           <div className="flex-1 min-w-0">
             <h1 className="font-bold text-base" style={{ fontFamily: 'var(--n-font-display)', color: 'var(--n-sidebar-text)' }}>HardhatLedger</h1>
-            <p className="text-xs" style={{ color: 'var(--n-sidebar-dim)' }}>Construction Materials</p>
+            <p className="text-xs" style={{ color: 'var(--n-sidebar-dim)' }}>CW Devs</p>
           </div>
           {/* Close button — mobile only */}
           <button

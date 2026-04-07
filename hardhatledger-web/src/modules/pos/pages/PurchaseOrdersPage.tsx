@@ -9,7 +9,7 @@ import { Select } from '../../../components/ui/Select';
 import { Spinner } from '../../../components/ui/Spinner';
 import {
   HiPlus, HiEye, HiTrash, HiSearch, HiX, HiChevronLeft, HiChevronRight,
-  HiDocumentText, HiCheckCircle, HiExclamation, HiClipboardCheck,
+  HiDocumentText, HiCheckCircle, HiExclamation, HiClipboardCheck, HiDownload,
 } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
@@ -24,6 +24,135 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' |
 const STATUS_TABS = ['all', 'draft', 'sent', 'partial', 'received', 'cancelled'] as const;
 
 const fmt = (n: number) => new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+async function downloadPOPdf(po: PurchaseOrder) {
+  const [{ default: jsPDF }, html2canvasMod] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas'),
+  ]);
+  // html2canvas ships as a CJS function; ESM interop may expose it as default or the module itself
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const html2canvas = (html2canvasMod as any).default ?? html2canvasMod;
+
+  const ts = dayjs().format('YYYY-MM-DD_HH-mm-ss');
+  const filename = `PO_${po.po_number}_${ts}.pdf`;
+
+  const statusColors: Record<string, string> = {
+    draft: '#6b7280', sent: '#2563eb', partial: '#d97706', received: '#16a34a', cancelled: '#dc2626',
+  };
+  const statusColor = statusColors[po.status] ?? '#6b7280';
+
+  const rows = (po.items ?? []).map((it) => `
+    <tr>
+      <td>${it.product?.name ?? '—'}</td>
+      <td style="font-family:monospace;font-size:11px">${it.product?.sku ?? '—'}</td>
+      <td style="text-align:center">${it.quantity_ordered}</td>
+      <td style="text-align:center;color:#16a34a">${it.quantity_received}</td>
+      <td style="text-align:right">₱${fmt(it.unit_cost)}</td>
+      <td style="text-align:right;font-weight:600">₱${fmt(it.quantity_ordered * it.unit_cost)}</td>
+    </tr>`).join('');
+
+  // Build a fixed-width container that html2canvas can capture cleanly
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;background:#fff;';
+  container.innerHTML = `
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body, div { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a2e; }
+  .wrap { padding: 32px; background: #fff; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #1B3A5C; }
+  .brand { font-size: 22px; font-weight: 700; color: #1B3A5C; }
+  .brand span { color: #F5A623; }
+  .doc-title { font-size: 13px; color: #666; margin-top: 2px; }
+  .po-number { font-size: 18px; font-weight: 700; color: #1B3A5C; font-family: monospace; }
+  .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: #fff; background: ${statusColor}; }
+  .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .info-card { background: #f8f9fa; border-radius: 8px; padding: 10px 12px; }
+  .info-label { font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
+  .info-value { font-size: 13px; font-weight: 500; color: #1a1a2e; }
+  .info-value.bold { font-weight: 700; font-size: 15px; color: #1B3A5C; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  thead th { background: #1B3A5C; color: #fff; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; padding: 9px 12px; text-align: left; }
+  tbody tr:nth-child(even) { background: #f8f9fa; }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid #e9ecef; font-size: 12px; }
+  tfoot td { padding: 10px 12px; font-size: 13px; font-weight: 700; border-top: 2px solid #1B3A5C; }
+  .notes { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #78350f; }
+  .footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #dee2e6; font-size: 10px; color: #aaa; display: flex; justify-content: space-between; }
+</style>
+<div class="wrap">
+  <div class="header">
+    <div>
+      <div class="brand">Hardhat<span>Ledger</span></div>
+      <div class="doc-title">Purchase Order</div>
+    </div>
+    <div style="text-align:right">
+      <div class="po-number">${po.po_number}</div>
+      <div style="margin-top:4px"><span class="status-badge">${po.status}</span></div>
+    </div>
+  </div>
+  <div class="info-grid">
+    <div class="info-card"><div class="info-label">Supplier</div><div class="info-value">${po.supplier?.name ?? '—'}</div></div>
+    <div class="info-card"><div class="info-label">Expected Date</div><div class="info-value">${po.expected_date ? dayjs(po.expected_date).format('MMM D, YYYY') : '—'}</div></div>
+    <div class="info-card"><div class="info-label">Total Amount</div><div class="info-value bold">₱${fmt(po.total_amount)}</div></div>
+    <div class="info-card"><div class="info-label">Created By</div><div class="info-value">${po.user?.name ?? '—'}</div></div>
+    <div class="info-card"><div class="info-label">Created Date</div><div class="info-value">${dayjs(po.created_at).format('MMM D, YYYY h:mm A')}</div></div>
+    <div class="info-card"><div class="info-label">Received Date</div><div class="info-value">${po.received_date ? dayjs(po.received_date).format('MMM D, YYYY') : '—'}</div></div>
+  </div>
+  ${po.notes ? `<div class="notes"><strong>Notes:</strong> ${po.notes}</div>` : ''}
+  <table>
+    <thead>
+      <tr>
+        <th>Product</th><th>SKU</th>
+        <th style="text-align:center">Ordered</th>
+        <th style="text-align:center">Received</th>
+        <th style="text-align:right">Unit Cost</th>
+        <th style="text-align:right">Line Total</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="5" style="text-align:right;font-size:12px;font-weight:600;color:#555">Order Total:</td>
+        <td style="text-align:right;color:#1B3A5C">₱${fmt(po.total_amount)}</td>
+      </tr>
+    </tfoot>
+  </table>
+  <div class="footer">
+    <span>HardhatLedger — Construction Materials Management</span>
+    <span>Downloaded: ${dayjs().format('MMM D, YYYY h:mm A')}</span>
+  </div>
+</div>`;
+
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      width: 794,
+      windowWidth: 794,
+    });
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: 'a4' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const imgH = (canvas.height * pageW) / canvas.width;
+
+    // If content is taller than one page, split across pages
+    let yOffset = 0;
+    while (yOffset < imgH) {
+      if (yOffset > 0) pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, -yOffset, pageW, imgH);
+      yOffset += pageH;
+    }
+
+    pdf.save(filename);
+  } finally {
+    document.body.removeChild(container);
+  }
+}
 
 const getPageNumbers = (current: number, total: number): (number | null)[] => {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -62,6 +191,7 @@ export function PurchaseOrdersPage() {
   /* ── modals ── */
   const [createOpen, setCreateOpen] = useState(false);
   const [detailPO, setDetailPO] = useState<PurchaseOrder | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   /* load master data once */
   useEffect(() => {
@@ -101,6 +231,16 @@ export function PurchaseOrdersPage() {
       const r = await api.get(`/purchase-orders/${po.id}`);
       setDetailPO(r.data.data);
     } catch { toast.error('Failed to load PO details'); }
+  };
+
+  const handleDownloadPdf = async (po: PurchaseOrder, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDownloadingId(po.id);
+    try {
+      const r = await api.get(`/purchase-orders/${po.id}`);
+      downloadPOPdf(r.data.data);
+    } catch { toast.error('Failed to download PDF'); }
+    finally { setDownloadingId(null); }
   };
 
   const hasActiveFilters = statusFilter !== 'all' || supplierFilter !== '' || searchInput !== '';
@@ -253,13 +393,23 @@ export function PurchaseOrdersPage() {
                       </td>
                       <td style={{ color: "var(--n-text-secondary)" }}>{dayjs(po.created_at).format('MMM D, YYYY')}</td>
                       <td className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => openDetail(po)}
-                          className="p-1.5 hover:bg-blue-50 rounded text-blue-600 transition-colors"
-                          title="View details"
-                        >
-                          <HiEye className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openDetail(po)}
+                            className="p-1.5 hover:bg-blue-50 rounded text-blue-600 transition-colors"
+                            title="View details"
+                          >
+                            <HiEye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDownloadPdf(po, e)}
+                            disabled={downloadingId === po.id}
+                            className="p-1.5 hover:bg-green-50 rounded text-green-600 transition-colors disabled:opacity-50"
+                            title="Download PDF"
+                          >
+                            <HiDownload className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -633,13 +783,18 @@ function PODetailModal({
 
       {/* ── Action bar ── */}
       {!receiveMode && (
-        <div className="flex justify-end gap-3 pt-2 border-t border-[var(--n-divider)]">
-          <Button variant="secondary" onClick={onClose}>Close</Button>
-          {canReceive && (
-            <Button variant="amber" onClick={() => setReceiveMode(true)}>
-              <HiClipboardCheck className="w-4 h-4 mr-2" /> Receive Items
-            </Button>
-          )}
+        <div className="flex justify-between items-center pt-2 border-t border-[var(--n-divider)]">
+          <Button variant="secondary" onClick={() => downloadPOPdf(po)}>
+            <HiDownload className="w-4 h-4 mr-2" /> Download PDF
+          </Button>
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={onClose}>Close</Button>
+            {canReceive && (
+              <Button variant="amber" onClick={() => setReceiveMode(true)}>
+                <HiClipboardCheck className="w-4 h-4 mr-2" /> Receive Items
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
