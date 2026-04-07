@@ -95,6 +95,11 @@
             border-top: 1px solid #ddd;
             padding-top: 10px;
         }
+        .voided-row td {
+            text-decoration: line-through;
+            color: #aaa !important;
+            background-color: #fafafa !important;
+        }
     </style>
 </head>
 <body>
@@ -105,14 +110,10 @@
     </div>
 
     <div class="period-info">
-        <strong>Period:</strong>
-        @if($period === 'daily')
-            {{ date('F j, Y', strtotime($date)) }}
-        @elseif($period === 'weekly')
-            Week of {{ now()->startOfWeek()->format('F j, Y') }}
-        @else
-            {{ now()->format('F Y') }}
-        @endif
+        <strong>Period:</strong> {{ $label }}
+        @if($statusLabel !== 'All') &nbsp;&middot;&nbsp; <strong>Status:</strong> {{ $statusLabel }} @endif
+        @if($fulfillmentLabel !== 'All') &nbsp;&middot;&nbsp; <strong>Type:</strong> {{ $fulfillmentLabel }} @endif
+        @if($paymentLabel !== 'All') &nbsp;&middot;&nbsp; <strong>Payment:</strong> {{ $paymentLabel }} @endif
         <br>
         <strong>Generated:</strong> {{ now()->format('F j, Y \a\t g:i A') }}
     </div>
@@ -121,49 +122,60 @@
         <thead>
             <tr>
                 <th style="width: 12%">Transaction #</th>
-                <th style="width: 18%">Date & Time</th>
-                <th style="width: 20%">Client</th>
-                <th style="width: 15%">Type</th>
-                <th style="width: 12%" class="text-right">Subtotal</th>
-                <th style="width: 10%" class="text-right">Discount</th>
-                <th style="width: 13%" class="text-right">Total</th>
+                <th style="width: 13%">Date & Time</th>
+                <th style="width: 14%">Client</th>
+                <th style="width: 8%">Type</th>
+                <th style="width: 8%">Status</th>
+                <th style="width: 9%" class="text-right">Subtotal</th>
+                <th style="width: 7%" class="text-right">Discount</th>
+                <th style="width: 9%" class="text-right">Total</th>
+                <th style="width: 20%">Notes</th>
             </tr>
         </thead>
         <tbody>
             @forelse($sales as $sale)
-            <tr>
+            <tr @if($sale->status === 'voided') class="voided-row" @endif>
                 <td>{{ $sale->transaction_number }}</td>
                 <td>{{ $sale->created_at->format('M d, Y h:i A') }}</td>
                 <td>{{ $sale->client?->business_name ?? 'Walk-in' }}</td>
                 <td class="text-center">{{ ucfirst($sale->fulfillment_type) }}</td>
+                <td class="text-center">{{ ucfirst($sale->status) }}</td>
                 <td class="text-right">{{ number_format($sale->subtotal, 2) }}</td>
                 <td class="text-right">{{ number_format($sale->discount_amount, 2) }}</td>
                 <td class="text-right amount">{{ number_format($sale->total_amount, 2) }}</td>
+                <td style="font-size:9px; color:#555;">{{ $sale->notes ?? '—' }}</td>
             </tr>
             @empty
             <tr>
-                <td colspan="7" class="text-center">No transactions found for this period</td>
+                <td colspan="9" class="text-center">No transactions found for this period</td>
             </tr>
             @endforelse
         </tbody>
     </table>
 
+    @php $activeSales = $sales->reject(fn ($s) => $s->status === 'voided'); @endphp
     <div class="summary">
         <div class="summary-row">
             <span>Total Transactions:</span>
             <span>{{ $sales->count() }}</span>
         </div>
+        @if($sales->count() !== $activeSales->count())
+        <div class="summary-row" style="color: #999; font-size: 10px; font-weight: normal;">
+            <span>{{ $sales->count() - $activeSales->count() }} voided transaction(s) shown with strikethrough &mdash; excluded from totals below</span>
+            <span></span>
+        </div>
+        @endif
         <div class="summary-row">
             <span>Total Subtotal:</span>
-            <span>{{ number_format($sales->sum('subtotal'), 2) }}</span>
+            <span>{{ number_format($activeSales->sum('subtotal'), 2) }}</span>
         </div>
         <div class="summary-row">
             <span>Total Discounts:</span>
-            <span>-{{ number_format($sales->sum('discount_amount'), 2) }}</span>
+            <span>-{{ number_format($activeSales->sum('discount_amount'), 2) }}</span>
         </div>
         <div class="summary-row summary-total">
             <span>TOTAL SALES</span>
-            <span>{{ number_format($sales->sum('total_amount'), 2) }}</span>
+            <span>{{ number_format($activeSales->sum('total_amount'), 2) }}</span>
         </div>
     </div>
 

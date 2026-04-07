@@ -130,6 +130,8 @@ Route::prefix('v1')->group(function () {
             });
             Route::middleware('permission:pos.create-sale')->post('/sales', [PosController::class, 'createSale']);
             Route::middleware('permission:pos.void-sale')->post('/sales/{sale}/void', [PosController::class, 'voidSale']);
+            Route::middleware('permission:pos.void-sale')->patch('/sales/{sale}', [PosController::class, 'updateSale']);
+            Route::middleware('permission:pos.access')->patch('/sales/{sale}/complete', [PosController::class, 'markCompleted']);
             Route::middleware('permission:pos.view-daily-summary')->get('/daily-summary', [PosController::class, 'dailySummary']);
         });
 
@@ -141,6 +143,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/reports/balance-sheet', [AccountingController::class, 'balanceSheet']);
             Route::get('/reports/cash-flow', [AccountingController::class, 'cashFlow']);
             Route::get('/reports/client-statement', [AccountingController::class, 'clientStatement']);
+            Route::get('/reports/client-statement/pdf', [AccountingController::class, 'clientStatementPdf']);
         });
     });
 });

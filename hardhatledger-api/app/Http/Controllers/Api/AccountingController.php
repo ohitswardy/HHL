@@ -11,8 +11,10 @@ use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\Payment;
 use App\Models\SalesTransaction;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 
 class AccountingController extends Controller
@@ -378,5 +380,51 @@ class AccountingController extends Controller
                 'status' => $t->status,
             ]),
         ]);
+    }
+
+    public function clientStatementPdf(Request $request): Response
+    {
+        $request->validate([
+            'client_id'  => 'required|exists:clients,id',
+            'start_date' => 'required|date',
+            'end_date'   => 'required|date|after_or_equal:start_date',
+            'status'     => 'nullable|in:pending,completed,voided,refunded',
+        ]);
+
+        $client = Client::with('tier')->findOrFail($request->client_id);
+        $start  = $request->start_date;
+        $end    = $request->end_date;
+
+        $query = SalesTransaction::where('client_id', $client->id)
+            ->whereBetween('created_at', [$start, $end . ' 23:59:59'])
+            ->with(['user', 'payments']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $transactions = $query->orderBy('created_at')->get();
+
+        $totalCharges  = $transactions->where('status', '!=', 'voided')->sum('total_amount');
+        $totalPayments = $transactions->flatMap->payments->where('status', 'confirmed')->sum('amount');
+        $periodBalance = $totalCharges - $totalPayments;
+
+        $pdf = Pdf::loadView('reports.client-statement', [
+            'client'        => $client,
+            'startDate'     => $start,
+            'endDate'       => $end,
+            'statusFilter'  => $request->status,
+            'transactions'  => $transactions,
+            'totalCharges'  => (float) $totalCharges,
+            'totalPayments' => (float) $totalPayments,
+            'periodBalance' => (float) $periodBalance,
+        ]);
+
+        $pdf->setPaper('A4', 'portrait');
+
+        $slug     = preg_replace('/[^a-z0-9]+/i', '-', strtolower($client->business_name));
+        $filename = "statement-{$slug}-{$start}-to-{$end}.pdf";
+
+        return $pdf->download($filename);
     }
 }

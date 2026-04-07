@@ -114,6 +114,19 @@
         @endforeach
     </table>
 
+    @if($sale->notes)
+    <div class="divider"></div>
+
+    <table>
+        <tr>
+            <td class="bold">Notes:</td>
+        </tr>
+        <tr>
+            <td style="padding-top:2px; color:#444; white-space:pre-wrap;">{{ $sale->notes }}</td>
+        </tr>
+    </table>
+    @endif
+
     <div class="divider"></div>
 
     <div class="footer center">

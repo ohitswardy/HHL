@@ -587,76 +587,72 @@ function CreatePOModal({
           </div>
           {errors.items && <p className="text-xs text-red-500 mb-2">{errors.items}</p>}
 
-          <div className="border border-[var(--n-divider)] rounded-lg overflow-hidden">
-            <table className="neu-table">
-              <thead className="">
-                <tr>
-                  <th className="text-left px-3 py-2.5 font-medium text-[var(--n-text-secondary)]">Product</th>
-                  <th className="text-center px-3 py-2.5 font-medium text-[var(--n-text-secondary)] w-24">Qty</th>
-                  <th className="text-center px-3 py-2.5 font-medium text-[var(--n-text-secondary)] w-32">Unit Cost (₱)</th>
-                  <th className="text-right px-3 py-2.5 font-medium text-[var(--n-text-secondary)] w-28">Subtotal</th>
-                  <th className="w-10"></th>
-                </tr>
-              </thead>
-              <tbody >
-                {items.map((item, idx) => {
-                  const selectedProduct = products.find((p) => p.id === item.product_id);
-                  return (
-                    <tr key={idx} className="hover:bg-[var(--n-input-bg)]/50">
-                      <td className="px-3 py-2.5">
-                        <Select
-                          inline
-                          value={item.product_id}
-                          onChange={(e) => onProductChange(idx, e.target.value ? Number(e.target.value) : '')}
-                          options={[{ value: '', label: 'Select product...' }, ...filteredProducts.map((p) => ({ value: p.id, label: `${p.sku} — ${p.name}` }))]}
-                          error={errors[`item_${idx}_product`]}
-                        />
-                        {selectedProduct && (
-                          <span className="text-xs text-[var(--n-text-dim)] mt-0.5 block">Unit: {selectedProduct.unit}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <input
-                          type="number" min={1}
-                          className={`w-full px-2 py-1.5 border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-navy/30 ${
-                            errors[`item_${idx}_qty`] ? 'border-red-400' : 'border-[var(--n-divider)]'
-                          }`}
-                          value={item.quantity_ordered}
-                          onChange={(e) => updateItem(idx, 'quantity_ordered', Math.max(1, parseInt(e.target.value) || 1))}
-                        />
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <input
-                          type="number" min={0} step="0.01"
-                          className={`w-full px-2 py-1.5 border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-navy/30 ${
-                            errors[`item_${idx}_cost`] ? 'border-red-400' : 'border-[var(--n-divider)]'
-                          }`}
-                          value={item.unit_cost}
-                          onChange={(e) => updateItem(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
-                        />
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-medium text-[var(--n-text)]">
-                        ₱{fmt(item.product_id ? item.quantity_ordered * item.unit_cost : 0)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        {items.length > 1 && (
-                          <button onClick={() => removeItem(idx)} className="p-1 hover:bg-red-50 rounded text-red-400 transition-colors">
-                            <HiTrash className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="bg-[var(--n-input-bg)] border-t border-[var(--n-divider)]">
-                <tr>
-                  <td colSpan={3} className="px-3 py-3 text-right text-sm font-semibold text-[var(--n-text-secondary)]">Order Total:</td>
-                  <td className="px-3 py-3 text-right text-base font-bold text-[var(--n-text)]">₱{fmt(total)}</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
+          <div className="space-y-2">
+            {/* Column headers */}
+            <div className="hidden md:grid grid-cols-[1fr_80px_120px_100px_32px] gap-2 px-1">
+              <span className="text-xs font-semibold text-[var(--n-text-secondary)] uppercase tracking-wide">Product</span>
+              <span className="text-xs font-semibold text-[var(--n-text-secondary)] uppercase tracking-wide text-center">Qty</span>
+              <span className="text-xs font-semibold text-[var(--n-text-secondary)] uppercase tracking-wide text-center">Unit Cost (₱)</span>
+              <span className="text-xs font-semibold text-[var(--n-text-secondary)] uppercase tracking-wide text-right">Subtotal</span>
+              <span></span>
+            </div>
+
+            {items.map((item, idx) => {
+              const selectedProduct = products.find((p) => p.id === item.product_id);
+              return (
+                <div key={idx} className="grid grid-cols-[1fr_80px_120px_100px_32px] gap-2 items-start p-2 rounded-lg border border-[var(--n-divider)] bg-[var(--n-surface)]">
+                  {/* Product selector */}
+                  <div>
+                    <Select
+                      inline
+                      value={item.product_id}
+                      onChange={(e) => onProductChange(idx, e.target.value ? Number(e.target.value) : '')}
+                      options={[{ value: '', label: 'Select product...' }, ...filteredProducts.map((p) => ({ value: p.id, label: `${p.sku} — ${p.name}` }))]}
+                      error={errors[`item_${idx}_product`]}
+                    />
+                    {selectedProduct && (
+                      <span className="text-xs text-[var(--n-text-dim)] mt-0.5 block pl-1">Unit: {selectedProduct.unit}</span>
+                    )}
+                  </div>
+                  {/* Qty */}
+                  <input
+                    type="number" min={1}
+                    className={`w-full px-2 py-1.5 border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-navy/30 bg-[var(--n-input-bg)] ${
+                      errors[`item_${idx}_qty`] ? 'border-red-400' : 'border-[var(--n-divider)]'
+                    }`}
+                    value={item.quantity_ordered}
+                    onChange={(e) => updateItem(idx, 'quantity_ordered', Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                  {/* Unit cost */}
+                  <input
+                    type="number" min={0} step="0.01"
+                    className={`w-full px-2 py-1.5 border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-navy/30 bg-[var(--n-input-bg)] ${
+                      errors[`item_${idx}_cost`] ? 'border-red-400' : 'border-[var(--n-divider)]'
+                    }`}
+                    value={item.unit_cost}
+                    onChange={(e) => updateItem(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
+                  />
+                  {/* Subtotal */}
+                  <div className="text-right font-medium text-[var(--n-text)] text-sm pt-1.5">
+                    ₱{fmt(item.product_id ? item.quantity_ordered * item.unit_cost : 0)}
+                  </div>
+                  {/* Remove */}
+                  <div className="flex items-start pt-1">
+                    {items.length > 1 && (
+                      <button onClick={() => removeItem(idx)} className="p-1 hover:bg-red-50 rounded text-red-400 transition-colors">
+                        <HiTrash className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Order Total */}
+            <div className="flex justify-end items-center gap-3 pt-2 pr-1">
+              <span className="text-sm font-semibold text-[var(--n-text-secondary)]">Order Total:</span>
+              <span className="text-base font-bold text-[var(--n-text)]">₱{fmt(total)}</span>
+            </div>
           </div>
         </div>
       </div>

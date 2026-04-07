@@ -14,7 +14,7 @@ class ClientController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Client::with('tier');
+        $query = Client::withComputedBalance()->with('tier');
 
         if ($search = $request->get('search')) {
             $query->where(function ($q) use ($search) {
@@ -50,7 +50,7 @@ class ClientController extends Controller
 
     public function show(Client $client): JsonResponse
     {
-        $client->load('tier');
+        $client = Client::withComputedBalance()->with('tier')->findOrFail($client->id);
         return response()->json(['data' => new ClientResource($client)]);
     }
 

@@ -59,13 +59,19 @@ class PosController extends Controller
                 : 0;
             $totalAmount = $subtotal - $discountAmount + $deliveryFee;
 
+            // Determine sale status: pending if all payments are deferred (bank_transfer/check/credit)
+            $methods = collect($request->payments)->pluck('payment_method');
+            $hasImmediateMethod = $methods->intersect(['cash', 'card'])->isNotEmpty();
+            $hasDeferredMethod  = $methods->intersect(['bank_transfer', 'check'])->isNotEmpty();
+            $saleStatus = ($hasDeferredMethod && !$hasImmediateMethod) ? 'pending' : 'completed';
+
             // Create transaction
             $sale = SalesTransaction::create([
                 'transaction_number' => $this->transactionNumberService->generateSaleNumber(),
                 'client_id'          => $client?->id,
                 'user_id'            => $request->user()->id,
                 'fulfillment_type'   => $request->fulfillment_type ?? 'pickup',
-                'status'             => 'completed',
+                'status'             => $saleStatus,
                 'subtotal'           => $subtotal,
                 'discount_amount'    => $discountAmount,
                 'delivery_fee'       => $deliveryFee,
@@ -87,22 +93,23 @@ class PosController extends Controller
                     $paymentStatus = 'pending';
                 }
 
+                $isPending = in_array($method, ['credit', 'bank_transfer', 'check']);
                 $sale->payments()->create([
-                    'payment_method' => $method,
-                    'amount' => $payment['amount'],
+                    'payment_method'   => $method,
+                    'amount'           => $payment['amount'],
                     'reference_number' => $payment['reference_number'] ?? null,
-                    'status' => $method === 'credit' ? 'pending' : 'confirmed',
-                    'paid_at' => $method === 'credit' ? null : now(),
+                    'status'           => $isPending ? 'pending' : 'confirmed',
+                    'paid_at'          => $isPending ? null : now(),
                 ]);
             }
 
-            // If credit sale, update client outstanding balance
-            $creditAmount = collect($request->payments)
-                ->where('payment_method', 'credit')
+            // If credit/bank_transfer/check sale, update client outstanding balance
+            $pendingAmount = collect($request->payments)
+                ->whereIn('payment_method', ['credit', 'bank_transfer', 'check'])
                 ->sum('amount');
 
-            if ($creditAmount > 0 && $client) {
-                $client->increment('outstanding_balance', $creditAmount);
+            if ($pendingAmount > 0 && $client) {
+                $client->increment('outstanding_balance', $pendingAmount);
             }
 
             // Deduct inventory
@@ -156,6 +163,21 @@ class PosController extends Controller
             $query->where('client_id', $clientId);
         }
 
+        if ($search = $request->get('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('transaction_number', 'like', "%{$search}%")
+                  ->orWhereHas('client', fn ($q2) => $q2->where('business_name', 'like', "%{$search}%"));
+            });
+        }
+
+        if ($fulfillmentType = $request->get('fulfillment_type')) {
+            $query->where('fulfillment_type', $fulfillmentType);
+        }
+
+        if ($paymentMethod = $request->get('payment_method')) {
+            $query->whereHas('payments', fn ($q) => $q->where('payment_method', $paymentMethod));
+        }
+
         $transactions = $query->orderByDesc('created_at')
             ->paginate($request->get('per_page', 20));
 
@@ -193,13 +215,13 @@ class PosController extends Controller
                 );
             }
 
-            // Reverse client outstanding balance if credit
+            // Reverse client outstanding balance if credit/bank_transfer/check
             if ($sale->client_id) {
-                $creditAmount = $sale->payments()
-                    ->where('payment_method', 'credit')
+                $pendingAmount = $sale->payments()
+                    ->whereIn('payment_method', ['credit', 'bank_transfer', 'check'])
                     ->sum('amount');
-                if ($creditAmount > 0) {
-                    $sale->client->decrement('outstanding_balance', $creditAmount);
+                if ($pendingAmount > 0) {
+                    $sale->client->decrement('outstanding_balance', $pendingAmount);
                 }
             }
 
@@ -207,6 +229,98 @@ class PosController extends Controller
             $this->journalService->reverseSaleEntry($sale);
 
             $sale->update(['status' => 'voided']);
+        });
+
+        $sale->load(['client.tier', 'user', 'items.product', 'payments']);
+        return response()->json(['data' => new SalesTransactionResource($sale)]);
+    }
+
+    public function markCompleted(SalesTransaction $sale): JsonResponse
+    {
+        if ($sale->status !== 'pending') {
+            return response()->json(['message' => 'Only pending transactions can be marked as completed.'], 422);
+        }
+
+        $sale->update(['status' => 'completed']);
+        $sale->payments()
+            ->where('status', 'pending')
+            ->whereIn('payment_method', ['bank_transfer', 'check'])
+            ->update(['status' => 'confirmed', 'paid_at' => now()]);
+
+        // Clear outstanding balance for the now-confirmed deferred payments
+        if ($sale->client_id) {
+            $sale->load('client');
+            $deferredAmount = $sale->payments()
+                ->whereIn('payment_method', ['bank_transfer', 'check'])
+                ->sum('amount');
+            if ($deferredAmount > 0) {
+                $sale->client->decrement('outstanding_balance', $deferredAmount);
+            }
+        }
+
+        $sale->load(['client.tier', 'user', 'items.product', 'payments']);
+        return response()->json(['data' => new SalesTransactionResource($sale)]);
+    }
+
+    public function updateSale(Request $request, SalesTransaction $sale): JsonResponse
+    {
+        if ($sale->status === 'voided') {
+            return response()->json(['message' => 'Voided transactions cannot be edited.'], 422);
+        }
+
+        $request->validate([
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'items' => ['sometimes', 'array', 'min:1'],
+            'items.*.id'         => ['required_with:items', 'integer'],
+            'items.*.unit_price' => ['required_with:items', 'numeric', 'min:0'],
+            'items.*.discount'   => ['required_with:items', 'numeric', 'min:0'],
+        ]);
+
+        DB::transaction(function () use ($request, $sale) {
+            $originalTotal = (float) $sale->total_amount;
+
+            if ($request->has('items')) {
+                $sale->load('items');
+                $subtotal       = 0;
+                $discountAmount = 0;
+
+                foreach ($request->items as $itemData) {
+                    $item = $sale->items->firstWhere('id', $itemData['id']);
+                    if (!$item) continue;
+
+                    $unitPrice = (float) $itemData['unit_price'];
+                    $discount  = (float) $itemData['discount'];
+                    $lineTotal = max(0, ($unitPrice * $item->quantity) - $discount);
+
+                    $item->update([
+                        'unit_price' => $unitPrice,
+                        'discount'   => $discount,
+                        'line_total' => $lineTotal,
+                    ]);
+
+                    $subtotal       += $unitPrice * $item->quantity;
+                    $discountAmount += $discount;
+                }
+
+                $newTotal = max(0, $subtotal - $discountAmount + (float) $sale->delivery_fee);
+
+                $sale->update([
+                    'notes'           => $request->notes,
+                    'subtotal'        => $subtotal,
+                    'discount_amount' => $discountAmount,
+                    'total_amount'    => $newTotal,
+                ]);
+
+                // If sale total changed, reverse the original journal entry and post a fresh one
+                if (abs($newTotal - $originalTotal) >= 0.01) {
+                    $this->journalService->reverseSaleEntry($sale);
+                    $sale->refresh()->load('items.product', 'payments');
+                    $this->journalService->postSaleEntry($sale);
+                }
+            } else {
+                // Notes-only update — no financial impact
+                $sale->update(['notes' => $request->notes]);
+            }
         });
 
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
@@ -258,49 +372,64 @@ class PosController extends Controller
 
     public function exportReport(Request $request): Response
     {
-        $query = SalesTransaction::with(['client', 'user', 'items.product', 'payments'])
-            ->where('status', 'completed');
+        $query = SalesTransaction::with(['client', 'user', 'items.product', 'payments']);
 
-        // Apply date filters
-        $period = $request->get('period', 'daily'); // daily, weekly, monthly
-        $date   = $request->get('date', now()->toDateString());
-        $carbon = \Illuminate\Support\Carbon::parse($date);
+        $from = $request->get('from', now()->toDateString());
+        $to   = $request->get('to',   now()->toDateString());
 
-        match ($period) {
-            'daily'   => $query->whereDate('created_at', $date),
-            'weekly'  => $query->whereBetween('created_at', [
-                            $carbon->copy()->startOfWeek()->startOfDay(),
-                            $carbon->copy()->endOfWeek()->endOfDay(),
-                         ]),
-            'monthly' => $query->whereYear('created_at', $carbon->year)
-                               ->whereMonth('created_at', $carbon->month),
-            default   => null,
-        };
+        $query->whereDate('created_at', '>=', $from)
+              ->whereDate('created_at', '<=', $to);
 
-        $format = $request->get('format', 'pdf'); // pdf, csv, xlsx
+        $status          = $request->get('status');
+        $fulfillmentType = $request->get('fulfillment_type');
+        $paymentMethod   = $request->get('payment_method');
+        $search          = $request->get('search');
 
-        $sales = $query->orderByDesc('created_at')->get();
+        if ($status)          $query->where('status', $status);
+        if ($fulfillmentType) $query->where('fulfillment_type', $fulfillmentType);
+        if ($paymentMethod)   $query->whereHas('payments', fn ($q) => $q->where('payment_method', $paymentMethod));
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('transaction_number', 'like', "%{$search}%")
+                  ->orWhereHas('client', fn ($q2) => $q2->where('business_name', 'like', "%{$search}%"));
+            });
+        }
+
+        $fromCarbon = \Illuminate\Support\Carbon::parse($from);
+        $toCarbon   = \Illuminate\Support\Carbon::parse($to);
+        $label      = $from === $to
+            ? $fromCarbon->format('M j, Y')
+            : $fromCarbon->format('M j, Y') . ' \u2013 ' . $toCarbon->format('M j, Y');
+
+        $statusLabel      = $status          ? ucfirst($status)                          : 'All';
+        $fulfillmentLabel = $fulfillmentType ? ucfirst($fulfillmentType)                 : 'All';
+        $paymentLabel     = $paymentMethod   ? ucfirst(str_replace('_', ' ', $paymentMethod)) : 'All';
+
+        $format = $request->get('format', 'pdf');
+        $sales  = $query->orderByDesc('created_at')->get();
 
         return match ($format) {
-            'csv' => $this->exportCsv($sales, $period),
-            'xlsx' => $this->exportXlsx($sales, $period),
-            default => $this->exportPdf($sales, $period, $date),
+            'csv'   => $this->exportCsv($sales, $label),
+            'xlsx'  => $this->exportXlsx($sales, $label),
+            default => $this->exportPdf($sales, $label, $statusLabel, $fulfillmentLabel, $paymentLabel),
         };
     }
 
-    private function exportCsv($sales, $period): Response
+    private function exportCsv($sales, string $label): Response
     {
-        $filename = "transactions-{$period}-" . now()->format('Y-m-d') . '.csv';
+        $filename = 'transactions-' . now()->format('Y-m-d') . '.csv';
         $headers = [
             'Transaction #',
             'Date',
             'Client',
             'Fulfillment Type',
+            'Status',
             'Subtotal',
             'Discount',
             'Total',
             'Payment Method',
             'Cashier',
+            'Notes',
         ];
 
         $handle = fopen('php://memory', 'r+');
@@ -313,12 +442,29 @@ class PosController extends Controller
                 $sale->created_at->format('Y-m-d H:i'),
                 $sale->client?->business_name ?? 'Walk-in',
                 $sale->fulfillment_type,
+                $sale->status,
                 number_format($sale->subtotal, 2),
                 number_format($sale->discount_amount, 2),
                 number_format($sale->total_amount, 2),
                 $paymentMethods,
                 $sale->user?->name ?? 'Unknown',
+                $sale->notes ?? '',
             ]);
+        }
+
+        // Summary rows — voided transactions are listed above but excluded from totals
+        $activeSales  = $sales->reject(fn ($s) => $s->status === 'voided');
+        $voidedCount  = $sales->count() - $activeSales->count();
+        fputcsv($handle, []);
+        fputcsv($handle, [
+            'TOTALS (voided excluded)', '', '', '', '',
+            number_format($activeSales->sum('subtotal'),        2),
+            number_format($activeSales->sum('discount_amount'), 2),
+            number_format($activeSales->sum('total_amount'),    2),
+            '', '', '',
+        ]);
+        if ($voidedCount > 0) {
+            fputcsv($handle, ["Note: {$voidedCount} voided transaction(s) listed above are excluded from the totals row"]);
         }
 
         rewind($handle);
@@ -330,29 +476,45 @@ class PosController extends Controller
             ->header('Content-Disposition', "attachment; filename=\"$filename\"");
     }
 
-    private function exportXlsx($sales, $period): Response
+    private function exportXlsx($sales, string $label): Response
     {
-        $filename = "transactions-{$period}-" . now()->format('Y-m-d') . '.xlsx';
+        $filename = 'transactions-' . now()->format('Y-m-d') . '.xlsx';
 
         $rows = [];
-        $rows[] = ['Transaction #', 'Date', 'Client', 'Fulfillment Type', 'Subtotal', 'Discount', 'Total', 'Payment Method', 'Cashier'];
+        $rows[] = ['Transaction #', 'Date', 'Client', 'Fulfillment Type', 'Status', 'Subtotal', 'Discount', 'Total', 'Payment Method', 'Cashier', 'Notes'];
+
+        $strikeThroughRows = [];
 
         foreach ($sales as $sale) {
             $paymentMethods = $sale->payments->pluck('payment_method')->join(', ');
+            if ($sale->status === 'voided') {
+                $strikeThroughRows[] = count($rows); // 0-based index
+            }
             $rows[] = [
                 $sale->transaction_number,
                 $sale->created_at->format('Y-m-d H:i'),
                 $sale->client?->business_name ?? 'Walk-in',
                 $sale->fulfillment_type,
+                $sale->status,
                 (float) $sale->subtotal,
                 (float) $sale->discount_amount,
                 (float) $sale->total_amount,
                 $paymentMethods,
                 $sale->user?->name ?? 'Unknown',
+                $sale->notes ?? '',
             ];
         }
 
-        $xlsx = $this->buildXlsx($rows);
+        // Summary rows — voided transactions shown with strikethrough but excluded from totals
+        $activeSales = $sales->reject(fn ($s) => $s->status === 'voided');
+        $voidedCount = $sales->count() - $activeSales->count();
+        $rows[] = [];
+        $rows[] = ['TOTALS (voided excluded)', '', '', '', '', (float) $activeSales->sum('subtotal'), (float) $activeSales->sum('discount_amount'), (float) $activeSales->sum('total_amount'), '', '', ''];
+        if ($voidedCount > 0) {
+            $rows[] = ["Note: {$voidedCount} voided transaction(s) shown with strikethrough above are excluded from totals", '', '', '', '', '', '', '', '', '', ''];
+        }
+
+        $xlsx = $this->buildXlsx($rows, $strikeThroughRows);
 
         return response($xlsx, 200)
             ->header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -362,27 +524,32 @@ class PosController extends Controller
     /**
      * Build a minimal but valid .xlsx binary from a 2-D array of rows.
      * Uses only PHP's built-in ZipArchive — no Composer packages required.
+     * $strikeThroughRows: 0-based row indices that should be rendered with strikethrough.
      */
-    private function buildXlsx(array $rows): string
+    private function buildXlsx(array $rows, array $strikeThroughRows = []): string
     {
+        $strikeThroughSet = array_flip($strikeThroughRows);
+
         // Collect all unique strings into a shared-strings table
         $strings = [];
         $strIndex = [];
 
         $xmlRows = '';
         foreach ($rows as $r => $row) {
+            $isStrike = isset($strikeThroughSet[$r]);
             $xmlRows .= '<row r="' . ($r + 1) . '">';
             foreach ($row as $c => $value) {
-                $col = $this->xlsxColLetter($c) . ($r + 1);
+                $col   = $this->xlsxColLetter($c) . ($r + 1);
+                $sAttr = $isStrike ? ' s="1"' : '';
                 if (is_numeric($value) && $value !== '') {
-                    $xmlRows .= "<c r=\"{$col}\"><v>{$value}</v></c>";
+                    $xmlRows .= "<c r=\"{$col}\"{$sAttr}><v>{$value}</v></c>";
                 } else {
                     $str = (string) $value;
                     if (!isset($strIndex[$str])) {
                         $strIndex[$str] = count($strings);
                         $strings[] = $str;
                     }
-                    $xmlRows .= "<c r=\"{$col}\" t=\"s\"><v>{$strIndex[$str]}</v></c>";
+                    $xmlRows .= "<c r=\"{$col}\" t=\"s\"{$sAttr}><v>{$strIndex[$str]}</v></c>";
                 }
             }
             $xmlRows .= '</row>';
@@ -395,6 +562,25 @@ class PosController extends Controller
             $sst .= '<si><t>' . htmlspecialchars($s, ENT_XML1, 'UTF-8') . '</t></si>';
         }
         $sst .= '</sst>';
+
+        // Styles XML — index 0 = default, index 1 = strikethrough gray
+        $stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . '<fonts count="2">'
+            . '<font><sz val="11"/><name val="Calibri"/></font>'
+            . '<font><strike/><sz val="11"/><color rgb="FF999999"/><name val="Calibri"/></font>'
+            . '</fonts>'
+            . '<fills count="2">'
+            . '<fill><patternFill patternType="none"/></fill>'
+            . '<fill><patternFill patternType="gray125"/></fill>'
+            . '</fills>'
+            . '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+            . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+            . '<cellXfs count="2">'
+            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+            . '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+            . '</cellXfs>'
+            . '</styleSheet>';
 
         // Sheet XML
         $sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -414,6 +600,7 @@ class PosController extends Controller
             . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
             . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>'
+            . '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
             . '</Relationships>';
 
         $pkgRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -428,6 +615,7 @@ class PosController extends Controller
             . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
             . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
             . '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+            . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
             . '</Types>';
 
         // Build the zip in memory
@@ -440,6 +628,7 @@ class PosController extends Controller
         $zip->addFromString('xl/_rels/workbook.xml.rels',   $wbRels);
         $zip->addFromString('xl/worksheets/sheet1.xml',     $sheet);
         $zip->addFromString('xl/sharedStrings.xml',         $sst);
+        $zip->addFromString('xl/styles.xml',                $stylesXml);
         $zip->close();
 
         $binary = file_get_contents($tmp);
@@ -460,14 +649,16 @@ class PosController extends Controller
         return $letter;
     }
 
-    private function exportPdf($sales, $period, $date): Response
+    private function exportPdf($sales, string $label, string $statusLabel, string $fulfillmentLabel, string $paymentLabel): Response
     {
-        $filename = "transactions-{$period}-" . now()->format('Y-m-d') . '.pdf';
+        $filename = 'transactions-' . now()->format('Y-m-d') . '.pdf';
 
         $pdf = Pdf::loadView('reports.transactions', [
-            'sales' => $sales,
-            'period' => $period,
-            'date' => $date,
+            'sales'            => $sales,
+            'label'            => $label,
+            'statusLabel'      => $statusLabel,
+            'fulfillmentLabel' => $fulfillmentLabel,
+            'paymentLabel'     => $paymentLabel,
         ]);
 
         return $pdf->download($filename);

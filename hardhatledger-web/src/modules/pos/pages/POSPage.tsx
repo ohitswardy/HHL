@@ -17,12 +17,15 @@ export function POSPage() {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
+  const [productRefresh, setProductRefresh] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [processing, setProcessing] = useState(false);
   const [receiptModal, setReceiptModal] = useState(false);
+  const [confirmSaleModal, setConfirmSaleModal] = useState(false);
   const [lastSale, setLastSale] = useState<SalesTransaction | null>(null);
   const [skuInput, setSkuInput] = useState('');
   const [deliveryFee, setDeliveryFee] = useState('');
+  const [saleNotes, setSaleNotes] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const skuRef = useRef<HTMLInputElement>(null);
 
@@ -66,7 +69,7 @@ export function POSPage() {
         .finally(() => setSearchLoading(false));
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, filterCategory]);
+  }, [search, filterCategory, productRefresh]);
 
   const addToCart = (product: Product, qty = 1) => {
     const stock = product.stock?.quantity_on_hand ?? 0;
@@ -101,6 +104,11 @@ export function POSPage() {
 
   const handleCompleteSale = async () => {
     if (cart.items.length === 0) { toast.error('Cart is empty'); return; }
+    setConfirmSaleModal(true);
+  };
+
+  const handleConfirmSale = async () => {
+    setConfirmSaleModal(false);
     setProcessing(true);
     try {
       const payload = {
@@ -113,12 +121,14 @@ export function POSPage() {
         })),
         payments: [{ payment_method: paymentMethod, amount: cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0) }],
         delivery_fee: cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0,
-        notes: '',
+        notes: saleNotes.trim() || null,
       };
       const res = await api.post('/pos/sales', payload);
       setLastSale(res.data.data);
       toast.success(`Sale completed: ${res.data.data.transaction_number}`);
       cart.clear();
+      setSaleNotes('');
+      setProductRefresh((n) => n + 1);
       setReceiptModal(true);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Sale failed');
@@ -136,7 +146,7 @@ export function POSPage() {
       }
       if (e.key === 'F9') {
         e.preventDefault();
-        handleCompleteSale();
+        if (cart.items.length > 0) handleCompleteSale();
       }
     };
     window.addEventListener('keydown', handler);
@@ -299,6 +309,71 @@ export function POSPage() {
           </div>
         </Card>
       </div>
+
+      {/* Confirm Sale Modal */}
+      <Modal isOpen={confirmSaleModal} onClose={() => setConfirmSaleModal(false)} title="Confirm Sale" width="sm">
+        <div className="space-y-4">
+          {/* Order summary */}
+          <div className="rounded-lg p-3 space-y-1" style={{ background: 'var(--n-surface-raised, var(--n-surface))' }}>
+            {cart.items.map((item) => (
+              <div key={item.product.id} className="flex justify-between text-sm">
+                <span style={{ color: 'var(--n-text-secondary)' }}>{item.product.name} × {item.quantity}</span>
+                <span className="font-medium">{item.line_total.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+          {/* Totals */}
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span style={{ color: 'var(--n-text-secondary)' }}>Client</span>
+              <span className="font-medium">{cart.client?.business_name || 'Walk-in'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span style={{ color: 'var(--n-text-secondary)' }}>Payment</span>
+              <span className="font-medium" style={{ textTransform: 'capitalize' }}>{paymentMethod.replace('_', ' ')}</span>
+            </div>
+            <div className="flex justify-between">
+              <span style={{ color: 'var(--n-text-secondary)' }}>Fulfillment</span>
+              <span className="font-medium" style={{ textTransform: 'capitalize' }}>{cart.fulfillmentType}</span>
+            </div>
+            {cart.fulfillmentType === 'delivery' && parseFloat(deliveryFee) > 0 && (
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--n-text-secondary)' }}>Delivery Fee</span>
+                <span className="font-medium">{parseFloat(deliveryFee).toFixed(2)}</span>
+              </div>
+            )}
+            {cart.getDiscountTotal() > 0 && (
+              <div className="flex justify-between" style={{ color: 'var(--n-danger)' }}>
+                <span>Discount</span>
+                <span>-{cart.getDiscountTotal().toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>
+              Notes <span style={{ color: 'var(--n-text-dim)', fontWeight: 400 }}>(optional — e.g. bank name, reference #)</span>
+            </label>
+            <textarea
+              className="neu-inline-input w-full"
+              style={{ minHeight: '3.5rem', resize: 'vertical', fontFamily: 'inherit' }}
+              placeholder="e.g. BDO Transfer — Ref# 20260407-1234"
+              value={saleNotes}
+              onChange={(e) => setSaleNotes(e.target.value)}
+              maxLength={500}
+            />
+          </div>
+          <div className="flex justify-between text-lg font-bold pt-2" style={{ borderTop: '1px solid var(--n-divider)', fontFamily: 'var(--n-font-display)' }}>
+            <span>TOTAL</span>
+            <span className="text-amber-dark">{(cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0)).toFixed(2)}</span>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <Button variant="secondary" className="flex-1" onClick={() => setConfirmSaleModal(false)}>Back</Button>
+            <Button variant="amber" className="flex-1" onClick={handleConfirmSale} loading={processing}>
+              Confirm & Process
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Receipt Modal */}
       <Modal isOpen={receiptModal} onClose={() => setReceiptModal(false)} title="Sale Complete" width="md">

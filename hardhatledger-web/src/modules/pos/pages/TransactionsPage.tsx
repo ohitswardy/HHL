@@ -2,20 +2,27 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { DatePicker } from '../../../components/ui/DatePicker';
+import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiSearch, HiDocumentDownload, HiChevronDown, HiPrinter, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
+import { HiSearch, HiDocumentDownload, HiChevronDown, HiPrinter, HiChevronLeft, HiChevronRight, HiCheck, HiBan, HiExclamation, HiPencilAlt, HiEye } from 'react-icons/hi';
+import dayjs from 'dayjs';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { SalesTransaction } from '../../../types';
+
+type ConfirmAction = { type: 'complete' | 'void'; transaction: SalesTransaction } | null;
 
 export function TransactionsPage() {
   const [transactions, setTransactions] = useState<SalesTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dateFrom, setDateFrom] = useState(new Date().toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [fulfillmentFilter, setFulfillmentFilter] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState('');
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 20 });
 
@@ -23,6 +30,24 @@ export function TransactionsPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+
+  // Status update
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+
+  // View transaction details
+  const [viewingTx, setViewingTx] = useState<SalesTransaction | null>(null);
+  const [loadingView, setLoadingView] = useState(false);
+
+  // Edit transaction
+  const [editingTx, setEditingTx] = useState<SalesTransaction | null>(null);
+  const [editItems, setEditItems] = useState<Array<{
+    id: number; product_name: string; sku: string;
+    quantity: number; unit_price: string; discount: string;
+  }>>([]);
+  const [editNotes, setEditNotes] = useState('');
+  const [loadingEdit, setLoadingEdit] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Close export dropdown on outside click
   useEffect(() => {
@@ -33,45 +58,23 @@ export function TransactionsPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Compute from/to date range from period + filterDate
-  const getDateRange = (p: typeof period, d: string) => {
-    const base = new Date(d);
-    if (p === 'daily') {
-      return { from: d, to: d };
-    }
-    if (p === 'weekly') {
-      const day = base.getDay(); // 0=Sun
-      const monday = new Date(base);
-      monday.setDate(base.getDate() - ((day + 6) % 7));
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      return {
-        from: monday.toISOString().split('T')[0],
-        to:   sunday.toISOString().split('T')[0],
-      };
-    }
-    // monthly
-    const from = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-01`;
-    const lastDay = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
-    const to   = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    return { from, to };
-  };
-
   // Reset to page 1 when filters change
-  useEffect(() => { setPage(1); }, [search, period, filterDate]);
+  useEffect(() => { setPage(1); }, [search, dateFrom, dateTo, statusFilter, fulfillmentFilter, paymentFilter]);
 
   // Fetch transactions whenever page or filters change
   useEffect(() => {
     setLoading(true);
-    const { from, to } = getDateRange(period, filterDate);
-    const params: Record<string, unknown> = { page, per_page: 20, from, to };
+    const params: Record<string, unknown> = { page, per_page: 20, from: dateFrom, to: dateTo };
     if (search) params.search = search;
+    if (statusFilter) params.status = statusFilter;
+    if (fulfillmentFilter) params.fulfillment_type = fulfillmentFilter;
+    if (paymentFilter) params.payment_method = paymentFilter;
 
     api.get('/pos/sales', { params })
       .then((res) => { setTransactions(res.data.data); setMeta(res.data.meta); })
       .catch(() => toast.error('Failed to load transactions'))
       .finally(() => setLoading(false));
-  }, [page, search, period, filterDate]);
+  }, [page, search, dateFrom, dateTo, statusFilter, fulfillmentFilter, paymentFilter]);
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -85,10 +88,10 @@ export function TransactionsPage() {
     setExporting(true);
     try {
       const res = await api.get('/pos/reports/export', {
-        params: { period, date: filterDate, format: 'pdf' },
+        params: { from: dateFrom, to: dateTo, ...(search && { search }), ...(statusFilter && { status: statusFilter }), ...(fulfillmentFilter && { fulfillment_type: fulfillmentFilter }), ...(paymentFilter && { payment_method: paymentFilter }), format: 'pdf' },
         responseType: 'blob',
       });
-      downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `transactions-${period}-${filterDate}.pdf`);
+      downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `transactions-${dateFrom}-${dateTo}.pdf`);
       toast.success('Report exported as PDF');
     } catch {
       toast.error('Failed to export PDF');
@@ -102,10 +105,10 @@ export function TransactionsPage() {
     setExporting(true);
     try {
       const res = await api.get('/pos/reports/export', {
-        params: { period, date: filterDate, format: 'csv' },
+        params: { from: dateFrom, to: dateTo, ...(search && { search }), ...(statusFilter && { status: statusFilter }), ...(fulfillmentFilter && { fulfillment_type: fulfillmentFilter }), ...(paymentFilter && { payment_method: paymentFilter }), format: 'csv' },
         responseType: 'blob',
       });
-      downloadBlob(new Blob([res.data], { type: 'text/csv' }), `transactions-${period}-${filterDate}.csv`);
+      downloadBlob(new Blob([res.data], { type: 'text/csv' }), `transactions-${dateFrom}-${dateTo}.csv`);
       toast.success('Report exported as CSV');
     } catch {
       toast.error('Failed to export CSV');
@@ -119,12 +122,12 @@ export function TransactionsPage() {
     setExporting(true);
     try {
       const res = await api.get('/pos/reports/export', {
-        params: { period, date: filterDate, format: 'xlsx' },
+        params: { from: dateFrom, to: dateTo, ...(search && { search }), ...(statusFilter && { status: statusFilter }), ...(fulfillmentFilter && { fulfillment_type: fulfillmentFilter }), ...(paymentFilter && { payment_method: paymentFilter }), format: 'xlsx' },
         responseType: 'blob',
       });
       downloadBlob(
         new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-        `transactions-${period}-${filterDate}.xlsx`
+        `transactions-${dateFrom}-${dateTo}.xlsx`
       );
       toast.success('Report exported as Excel');
     } catch {
@@ -132,6 +135,79 @@ export function TransactionsPage() {
     } finally {
       setExporting(false);
     }
+  };
+
+  const handleOpenView = async (tx: SalesTransaction) => {
+    setLoadingView(true);
+    try {
+      const res = await api.get(`/pos/sales/${tx.id}`);
+      setViewingTx(res.data.data);
+    } catch {
+      toast.error('Failed to load transaction details');
+    } finally {
+      setLoadingView(false);
+    }
+  };
+
+  const handleOpenEdit = async (tx: SalesTransaction) => {
+    setLoadingEdit(true);
+    try {
+      const res = await api.get(`/pos/sales/${tx.id}`);
+      const full: SalesTransaction = res.data.data;
+      setEditingTx(full);
+      setEditNotes(full.notes ?? '');
+      setEditItems(
+        (full.items ?? []).map((item) => ({
+          id: item.id,
+          product_name: item.product?.name ?? `Product #${item.product_id}`,
+          sku: item.product?.sku ?? '',
+          quantity: item.quantity,
+          unit_price: item.unit_price.toFixed(2),
+          discount: item.discount.toFixed(2),
+        }))
+      );
+    } catch {
+      toast.error('Failed to load transaction details');
+    } finally {
+      setLoadingEdit(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTx) return;
+    setSaving(true);
+    try {
+      const payload = {
+        notes: editNotes.trim() || null,
+        items: editItems.map((item) => ({
+          id: item.id,
+          unit_price: parseFloat(item.unit_price) || 0,
+          discount: parseFloat(item.discount) || 0,
+        })),
+      };
+      const res = await api.patch(`/pos/sales/${editingTx.id}`, payload);
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === editingTx.id ? res.data.data : t))
+      );
+      toast.success('Transaction updated');
+      setEditingTx(null);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getEditTotals = () => {
+    let subtotal = 0, discountTotal = 0;
+    editItems.forEach((item) => {
+      const up = parseFloat(item.unit_price) || 0;
+      const disc = parseFloat(item.discount) || 0;
+      subtotal += up * item.quantity;
+      discountTotal += disc;
+    });
+    const deliveryFee = editingTx ? (editingTx.delivery_fee ?? 0) : 0;
+    return { subtotal, discountTotal, deliveryFee, total: Math.max(0, subtotal - discountTotal + deliveryFee) };
   };
 
   const handlePrintReceipt = async (transactionId: number) => {
@@ -143,6 +219,34 @@ export function TransactionsPage() {
       toast.success('Receipt downloaded');
     } catch {
       toast.error('Failed to download receipt');
+    }
+  };
+
+  const handleMarkCompleted = async (transactionId: number) => {
+    setConfirmAction(null);
+    setUpdatingId(transactionId);
+    try {
+      const res = await api.patch(`/pos/sales/${transactionId}/complete`);
+      setTransactions((prev) => prev.map((t) => t.id === transactionId ? res.data.data : t));
+      toast.success('Transaction marked as completed');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to update status');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleVoidSale = async (transactionId: number) => {
+    setConfirmAction(null);
+    setUpdatingId(transactionId);
+    try {
+      const res = await api.post(`/pos/sales/${transactionId}/void`);
+      setTransactions((prev) => prev.map((t) => t.id === transactionId ? res.data.data : t));
+      toast.success('Transaction voided');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to void transaction');
+    } finally {
+      setUpdatingId(null);
     }
   };
 
@@ -159,9 +263,33 @@ export function TransactionsPage() {
   };
 
   const getPeriodLabel = () => {
-    if (period === 'daily') return `Day of ${filterDate}`;
-    if (period === 'weekly') return 'This Week';
-    return 'This Month';
+    const range = dateFrom === dateTo
+      ? dayjs(dateFrom).format('MMMM D, YYYY')
+      : `${dayjs(dateFrom).format('MMM D, YYYY')} \u2013 ${dayjs(dateTo).format('MMM D, YYYY')}`;
+    const extras = [statusFilter, fulfillmentFilter, paymentFilter ? paymentFilter.replace('_', ' ') : '']
+      .filter(Boolean)
+      .map((v) => v.charAt(0).toUpperCase() + v.slice(1));
+    return extras.length ? `${range} \u00b7 ${extras.join(' \u00b7 ')}` : range;
+  };
+
+  const setPresetToday = () => {
+    const t = new Date().toISOString().split('T')[0];
+    setDateFrom(t); setDateTo(t);
+  };
+  const setPresetWeek = () => {
+    const now = new Date();
+    const dow = now.getDay();
+    const mon = new Date(now); mon.setDate(now.getDate() - ((dow + 6) % 7));
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    setDateFrom(mon.toISOString().split('T')[0]);
+    setDateTo(sun.toISOString().split('T')[0]);
+  };
+  const setPresetMonth = () => {
+    const now = new Date();
+    const y = now.getFullYear(); const m = now.getMonth();
+    const last = new Date(y, m + 1, 0).getDate();
+    setDateFrom(`${y}-${String(m + 1).padStart(2, '0')}-01`);
+    setDateTo(`${y}-${String(m + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`);
   };
 
   return (
@@ -175,77 +303,112 @@ export function TransactionsPage() {
       </div>
 
       {/* Filters */}
-      <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <Card className="p-4 space-y-3">
+        {/* Row 1: Date range + quick presets */}
+        <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Period</label>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>From</label>
+            <DatePicker inline value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>To</label>
+            <DatePicker inline value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          </div>
+          <div className="flex gap-1.5 pb-px">
+            {(['Today', 'This Week', 'This Month'] as const).map((label) => (
+              <button
+                key={label}
+                className="neu-btn neu-btn-secondary text-xs"
+                style={{ padding: '0.35rem 0.7rem' }}
+                onClick={label === 'Today' ? setPresetToday : label === 'This Week' ? setPresetWeek : setPresetMonth}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 2: Status + Fulfillment + Search + Export */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div style={{ minWidth: '140px' }}>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>Status</label>
             <Select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value as 'daily' | 'weekly' | 'monthly')}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
               options={[
-                { value: 'daily', label: 'Daily' },
-                { value: 'weekly', label: 'Weekly' },
-                { value: 'monthly', label: 'Monthly' },
+                { value: '', label: 'All Statuses' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'completed', label: 'Completed' },
+                { value: 'voided', label: 'Voided' },
               ]}
             />
           </div>
-
-          {period === 'daily' && (
-            <div>
-              <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Date</label>
-              <DatePicker
-                inline
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
+          <div style={{ minWidth: '140px' }}>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>Fulfillment</label>
+            <Select
+              value={fulfillmentFilter}
+              onChange={(e) => setFulfillmentFilter(e.target.value)}
+              options={[
+                { value: '', label: 'All Types' },
+                { value: 'pickup', label: 'Pickup' },
+                { value: 'delivery', label: 'Delivery' },
+              ]}
+            />
+          </div>
+          <div style={{ minWidth: '150px' }}>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>Payment Method</label>
+            <Select
+              value={paymentFilter}
+              onChange={(e) => setPaymentFilter(e.target.value)}
+              options={[
+                { value: '', label: 'All Methods' },
+                { value: 'cash', label: 'Cash' },
+                { value: 'card', label: 'Card' },
+                { value: 'bank_transfer', label: 'Bank Transfer' },
+                { value: 'check', label: 'Check' },
+                { value: 'credit', label: 'Credit' },
+              ]}
+            />
+          </div>
+          <div className="flex-1" style={{ minWidth: '180px' }}>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>Search</label>
+            <div className="relative">
+              <HiSearch className="absolute left-3 top-2.5 w-4 h-4" style={{ color: 'var(--n-text-dim)' }} />
+              <input
+                className="neu-inline-input w-full" style={{ paddingLeft: '2.25rem' }}
+                placeholder="Transaction #, client name..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-          )}
-
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Search Transaction</label>
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
-                <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
-                <input
-                  className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
-                  placeholder="Transaction #, Client name..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-
-              {/* Export Button */}
-              <div className="relative" ref={exportRef}>
-                <button
-                  onClick={() => setExportOpen(!exportOpen)}
-                  className="neu-btn neu-btn-secondary"
-                  disabled={exporting || transactions.length === 0}
-                  style={{ padding: '0.625rem 1rem' }}
-                >
-                  <HiDocumentDownload className="w-4 h-4" />
-                  Export
-                  <HiChevronDown className="w-3 h-3" />
+          </div>
+          <div className="relative pb-px" ref={exportRef}>
+            <button
+              onClick={() => setExportOpen(!exportOpen)}
+              className="neu-btn neu-btn-secondary"
+              disabled={exporting || transactions.length === 0}
+              style={{ padding: '0.625rem 1rem' }}
+            >
+              <HiDocumentDownload className="w-4 h-4" />
+              Export
+              <HiChevronDown className="w-3 h-3" />
+            </button>
+            {exportOpen && (
+              <div className="neu-dropdown">
+                <button onClick={handleExportPdf} disabled={exporting} className="neu-dropdown-item">
+                  {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
+                  Export as PDF
                 </button>
-
-                {/* Export Dropdown */}
-                {exportOpen && (
-                  <div className="neu-dropdown">
-                    <button onClick={handleExportPdf} disabled={exporting} className="neu-dropdown-item">
-                      {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
-                      Export as PDF
-                    </button>
-                    <button onClick={handleExportCsv} disabled={exporting} className="neu-dropdown-item">
-                      {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
-                      Export as CSV
-                    </button>
-                    <button onClick={handleExportXlsx} disabled={exporting} className="neu-dropdown-item">
-                      {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
-                      Export as Excel
-                    </button>
-                  </div>
-                )}
+                <button onClick={handleExportCsv} disabled={exporting} className="neu-dropdown-item">
+                  {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
+                  Export as CSV
+                </button>
+                <button onClick={handleExportXlsx} disabled={exporting} className="neu-dropdown-item">
+                  {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
+                  Export as Excel
+                </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </Card>
@@ -269,16 +432,23 @@ export function TransactionsPage() {
                   <th>Date & Time</th>
                   <th>Client</th>
                   <th>Type</th>
+                  <th>Status</th>
+                  <th>Payment</th>
                   <th>Cashier</th>
                   <th className="text-right">Subtotal</th>
                   <th className="text-right">Discount</th>
                   <th className="text-right">Total</th>
+                  <th>Notes</th>
                   <th className="text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.map((tx) => (
-                  <tr key={tx.id}>
+                  <tr
+                    key={tx.id}
+                    onClick={() => handleOpenView(tx)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <td className="font-medium font-mono text-xs">{tx.transaction_number}</td>
                     <td style={{ color: 'var(--n-text-secondary)' }}>{new Date(tx.created_at).toLocaleString()}</td>
                     <td style={{ color: 'var(--n-text-secondary)' }}>{tx.client?.business_name || 'Walk-in'}</td>
@@ -287,14 +457,71 @@ export function TransactionsPage() {
                         {tx.fulfillment_type}
                       </Badge>
                     </td>
+                    <td>
+                      <Badge variant={tx.status === 'completed' ? 'success' : tx.status === 'pending' ? 'warning' : tx.status === 'voided' ? 'danger' : 'neutral'}>
+                        {tx.status}
+                      </Badge>
+                    </td>
+                    <td style={{ color: 'var(--n-text-secondary)', textTransform: 'capitalize' }}>
+                      {tx.payments?.map((p) => p.payment_method.replace('_', ' ')).join(', ') || '—'}
+                    </td>
                     <td style={{ color: 'var(--n-text-secondary)' }}>{tx.user?.name || 'Unknown'}</td>
-                    <td className="text-right" style={{ color: 'var(--n-text-secondary)' }}>{parseFloat(tx.subtotal).toFixed(2)}</td>
-                    <td className="text-right" style={{ color: 'var(--n-danger)' }}>{parseFloat(tx.discount_amount).toFixed(2)}</td>
-                    <td className="text-right font-semibold">{parseFloat(tx.total_amount).toFixed(2)}</td>
-                    <td className="text-center">
-                      <button onClick={() => handlePrintReceipt(tx.id)} className="neu-btn-icon info" title="Print Receipt">
-                        <HiPrinter className="w-4 h-4" />
-                      </button>
+                    <td className="text-right" style={{ color: 'var(--n-text-secondary)' }}>{tx.subtotal.toFixed(2)}</td>
+                    <td className="text-right" style={{ color: 'var(--n-danger)' }}>{tx.discount_amount.toFixed(2)}</td>
+                    <td className="text-right font-semibold">{tx.total_amount.toFixed(2)}</td>
+                    <td
+                      style={{ color: 'var(--n-text-secondary)', maxWidth: '160px' }}
+                      title={tx.notes ?? undefined}
+                    >
+                      {tx.notes
+                        ? <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.notes}</span>
+                        : <span style={{ color: 'var(--n-text-dim)' }}>—</span>
+                      }
+                    </td>
+                    <td className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        {tx.status === 'pending' && (
+                          <button
+                            onClick={() => setConfirmAction({ type: 'complete', transaction: tx })}
+                            disabled={updatingId === tx.id}
+                            className="neu-btn-icon success"
+                            title="Mark as Completed"
+                          >
+                            {updatingId === tx.id ? <Spinner size="sm" /> : <HiCheck className="w-4 h-4" />}
+                          </button>
+                        )}
+                        {(tx.status === 'pending' || tx.status === 'completed') && (
+                          <button
+                            onClick={() => setConfirmAction({ type: 'void', transaction: tx })}
+                            disabled={updatingId === tx.id}
+                            className="neu-btn-icon danger"
+                            title="Void Transaction"
+                          >
+                            <HiBan className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleOpenView(tx)}
+                          disabled={loadingView}
+                          className="neu-btn-icon"
+                          title="View Details"
+                        >
+                          <HiEye className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handlePrintReceipt(tx.id)} className="neu-btn-icon info" title="Print Receipt">
+                          <HiPrinter className="w-4 h-4" />
+                        </button>
+                        {tx.status !== 'voided' && (
+                          <button
+                            onClick={() => handleOpenEdit(tx)}
+                            disabled={loadingEdit}
+                            className="neu-btn-icon warning"
+                            title="Edit Transaction"
+                          >
+                            <HiPencilAlt className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -328,6 +555,364 @@ export function TransactionsPage() {
           </div>
         )}
       </Card>
+
+      {/* View Transaction Detail Modal */}
+      {viewingTx && (
+        <Modal
+          isOpen={viewingTx !== null}
+          onClose={() => setViewingTx(null)}
+          title={`Transaction — ${viewingTx.transaction_number}`}
+          width="xl"
+        >
+          {/* Info grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+            <TxInfoCard label="Client" value={viewingTx.client?.business_name || 'Walk-in'} />
+            <TxInfoCard label="Status">
+              <Badge variant={viewingTx.status === 'completed' ? 'success' : viewingTx.status === 'pending' ? 'warning' : viewingTx.status === 'voided' ? 'danger' : 'neutral'}>
+                {viewingTx.status}
+              </Badge>
+            </TxInfoCard>
+            <TxInfoCard label="Total Amount" value={`₱${viewingTx.total_amount.toFixed(2)}`} bold />
+            <TxInfoCard label="Cashier" value={viewingTx.user?.name ?? '—'} />
+            <TxInfoCard label="Type">
+              <Badge variant={viewingTx.fulfillment_type === 'delivery' ? 'info' : 'success'}>
+                {viewingTx.fulfillment_type}
+              </Badge>
+            </TxInfoCard>
+            <TxInfoCard label="Date & Time" value={dayjs(viewingTx.created_at).format('MMM D, YYYY h:mm A')} />
+          </div>
+
+          {/* Payment rows */}
+          {(viewingTx.payments ?? []).length > 0 && (
+            <div className="mb-5 rounded-lg overflow-hidden border border-[var(--n-divider)]">
+              <table className="neu-table">
+                <thead>
+                  <tr>
+                    <th>Payment Method</th>
+                    <th className="text-right">Amount</th>
+                    <th>Reference #</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(viewingTx.payments ?? []).map((p) => (
+                    <tr key={p.id}>
+                      <td style={{ textTransform: 'capitalize' }}>{p.payment_method.replace('_', ' ')}</td>
+                      <td className="text-right font-semibold">₱{p.amount.toFixed(2)}</td>
+                      <td style={{ color: 'var(--n-text-secondary)' }}>{p.reference_number || '—'}</td>
+                      <td>
+                        <Badge variant={p.status === 'confirmed' ? 'success' : p.status === 'pending' ? 'warning' : 'danger'}>
+                          {p.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Notes */}
+          {viewingTx.notes && (
+            <div
+              className="mb-5 px-3 py-2.5 rounded-lg text-sm"
+              style={{ background: 'var(--n-input-bg)', color: 'var(--n-text-secondary)' }}
+            >
+              <span className="font-semibold" style={{ color: 'var(--n-text)' }}>Notes: </span>
+              {viewingTx.notes}
+            </div>
+          )}
+
+          {/* Line items table */}
+          <div className="border border-[var(--n-divider)] rounded-lg overflow-hidden mb-5">
+            <table className="neu-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th className="text-center">Qty</th>
+                  <th className="text-right">Unit Price</th>
+                  <th className="text-right">Discount</th>
+                  <th className="text-right">Line Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(viewingTx.items ?? []).map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <span className="font-medium">{item.product?.name ?? `Product #${item.product_id}`}</span>
+                      <span className="block text-xs font-mono" style={{ color: 'var(--n-text-dim)' }}>{item.product?.sku ?? ''}</span>
+                    </td>
+                    <td className="text-center" style={{ color: 'var(--n-text-secondary)' }}>{item.quantity}</td>
+                    <td className="text-right">₱{item.unit_price.toFixed(2)}</td>
+                    <td className="text-right" style={{ color: 'var(--n-danger)' }}>
+                      {item.discount > 0 ? `-₱${item.discount.toFixed(2)}` : '—'}
+                    </td>
+                    <td className="text-right font-semibold">₱{item.line_total.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Financial summary */}
+          <div
+            className="rounded-lg p-3 space-y-1.5 text-sm mb-5"
+            style={{ background: 'var(--n-surface-raised, var(--n-input-bg))' }}
+          >
+            <div className="flex justify-between">
+              <span style={{ color: 'var(--n-text-secondary)' }}>Subtotal</span>
+              <span>₱{viewingTx.subtotal.toFixed(2)}</span>
+            </div>
+            {viewingTx.discount_amount > 0 && (
+              <div className="flex justify-between" style={{ color: 'var(--n-danger)' }}>
+                <span>Discount</span>
+                <span>-₱{viewingTx.discount_amount.toFixed(2)}</span>
+              </div>
+            )}
+            {viewingTx.delivery_fee > 0 && (
+              <div className="flex justify-between" style={{ color: 'var(--n-text-secondary)' }}>
+                <span>Delivery Fee</span>
+                <span>₱{viewingTx.delivery_fee.toFixed(2)}</span>
+              </div>
+            )}
+            <div
+              className="flex justify-between font-bold text-base pt-1.5"
+              style={{ borderTop: '1px solid var(--n-divider)', fontFamily: 'var(--n-font-display)' }}
+            >
+              <span>TOTAL</span>
+              <span style={{ color: 'var(--n-accent)' }}>₱{viewingTx.total_amount.toFixed(2)}</span>
+            </div>
+            {(viewingTx.total_paid ?? 0) > 0 && (
+              <>
+                <div className="flex justify-between text-green-700 font-medium">
+                  <span>Paid</span>
+                  <span>₱{(viewingTx.total_paid ?? 0).toFixed(2)}</span>
+                </div>
+                {(viewingTx.balance_due ?? 0) > 0 && (
+                  <div className="flex justify-between font-semibold" style={{ color: 'var(--n-danger)' }}>
+                    <span>Balance Due</span>
+                    <span>₱{(viewingTx.balance_due ?? 0).toFixed(2)}</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Footer actions */}
+          <div className="flex justify-between items-center pt-2 border-t border-[var(--n-divider)]">
+            <Button variant="secondary" onClick={() => handlePrintReceipt(viewingTx.id)}>
+              <HiPrinter className="w-4 h-4 mr-2" /> Print Receipt
+            </Button>
+            <div className="flex gap-3">
+              <Button variant="secondary" onClick={() => setViewingTx(null)}>Close</Button>
+              {viewingTx.status !== 'voided' && (
+                <Button
+                  variant="amber"
+                  onClick={() => { setViewingTx(null); handleOpenEdit(viewingTx); }}
+                >
+                  <HiPencilAlt className="w-4 h-4 mr-2" /> Edit
+                </Button>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit Transaction Modal */}
+      <Modal
+        isOpen={editingTx !== null}
+        onClose={() => !saving && setEditingTx(null)}
+        title={`Edit Transaction — ${editingTx?.transaction_number ?? ''}`}
+        width="xl"
+      >
+        {editingTx && (() => {
+          const totals = getEditTotals();
+          return (
+            <div className="space-y-5">
+              {editingTx.status === 'completed' && (
+                <div
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+                  style={{ background: 'var(--n-warning-glow, #fef9c3)', color: '#92400e' }}
+                >
+                  <HiExclamation className="w-4 h-4 shrink-0" />
+                  Editing a completed transaction will automatically reverse and re-post its journal entries.
+                </div>
+              )}
+
+              {/* Items table */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--n-text-secondary)' }}>Line Items</p>
+                <div className="overflow-x-auto">
+                  <table className="neu-table">
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th className="text-center">Qty</th>
+                        <th className="text-right">Unit Price</th>
+                        <th className="text-right">Discount</th>
+                        <th className="text-right">Line Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editItems.map((item, idx) => {
+                        const up   = parseFloat(item.unit_price) || 0;
+                        const disc = parseFloat(item.discount) || 0;
+                        const lt   = Math.max(0, up * item.quantity - disc);
+                        return (
+                          <tr key={item.id}>
+                            <td>
+                              <span className="font-medium">{item.product_name}</span>
+                              <span className="block text-xs font-mono" style={{ color: 'var(--n-text-dim)' }}>{item.sku}</span>
+                            </td>
+                            <td className="text-center" style={{ color: 'var(--n-text-secondary)' }}>{item.quantity}</td>
+                            <td className="text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="neu-inline-input text-right"
+                                style={{ width: '7rem' }}
+                                value={item.unit_price}
+                                onChange={(e) => setEditItems((prev) =>
+                                  prev.map((it, i) => i === idx ? { ...it, unit_price: e.target.value } : it)
+                                )}
+                              />
+                            </td>
+                            <td className="text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="neu-inline-input text-right"
+                                style={{ width: '6rem' }}
+                                value={item.discount}
+                                onChange={(e) => setEditItems((prev) =>
+                                  prev.map((it, i) => i === idx ? { ...it, discount: e.target.value } : it)
+                                )}
+                              />
+                            </td>
+                            <td className="text-right font-semibold">{lt.toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: 'var(--n-text-secondary)' }}>
+                  Notes <span style={{ fontWeight: 400, textTransform: 'none' }}>(e.g. bank name, reference #)</span>
+                </label>
+                <textarea
+                  className="neu-inline-input w-full"
+                  style={{ minHeight: '3.5rem', resize: 'vertical', fontFamily: 'inherit' }}
+                  placeholder="e.g. BDO Transfer — Ref# 20260407-1234"
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  maxLength={1000}
+                />
+              </div>
+
+              {/* Totals summary */}
+              <div
+                className="rounded-lg p-3 space-y-1 text-sm"
+                style={{ background: 'var(--n-surface-raised, var(--n-surface))' }}
+              >
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--n-text-secondary)' }}>Subtotal</span>
+                  <span>{totals.subtotal.toFixed(2)}</span>
+                </div>
+                {totals.discountTotal > 0 && (
+                  <div className="flex justify-between" style={{ color: 'var(--n-danger)' }}>
+                    <span>Total Discount</span>
+                    <span>-{totals.discountTotal.toFixed(2)}</span>
+                  </div>
+                )}
+                {totals.deliveryFee > 0 && (
+                  <div className="flex justify-between" style={{ color: 'var(--n-text-secondary)' }}>
+                    <span>Delivery Fee</span>
+                    <span>{totals.deliveryFee.toFixed(2)}</span>
+                  </div>
+                )}
+                <div
+                  className="flex justify-between font-bold text-base pt-1"
+                  style={{ borderTop: '1px solid var(--n-divider)', fontFamily: 'var(--n-font-display)' }}
+                >
+                  <span>TOTAL</span>
+                  <span className="text-amber-dark">{totals.total.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-1">
+                <Button variant="secondary" className="flex-1" onClick={() => setEditingTx(null)} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button variant="amber" className="flex-1" onClick={handleSaveEdit} loading={saving}>
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Confirmation Modal */}
+      <Modal
+        isOpen={confirmAction !== null}
+        onClose={() => setConfirmAction(null)}
+        title={confirmAction?.type === 'void' ? 'Void Transaction' : 'Mark as Completed'}
+        width="sm"
+      >
+        {confirmAction && (
+          <div className="text-center space-y-4">
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center mx-auto"
+              style={{ background: confirmAction.type === 'void' ? 'var(--n-danger-glow, #fee2e2)' : 'var(--n-success-glow)' }}
+            >
+              <HiExclamation className="w-7 h-7" style={{ color: confirmAction.type === 'void' ? 'var(--n-danger)' : 'var(--n-success)' }} />
+            </div>
+            <div>
+              <p className="font-semibold text-base">{confirmAction.transaction.transaction_number}</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--n-text-secondary)' }}>
+                {confirmAction.type === 'void'
+                  ? 'This will void the transaction and reverse all inventory and journal entries. This cannot be undone.'
+                  : 'This will mark the transaction as completed and confirm the pending payment.'}
+              </p>
+            </div>
+            <div className="flex gap-3 justify-center pt-2">
+              <Button variant="secondary" onClick={() => setConfirmAction(null)}>Cancel</Button>
+              <Button
+                variant={confirmAction.type === 'void' ? 'danger' : 'amber'}
+                onClick={() =>
+                  confirmAction.type === 'void'
+                    ? handleVoidSale(confirmAction.transaction.id)
+                    : handleMarkCompleted(confirmAction.transaction.id)
+                }
+                loading={updatingId === confirmAction.transaction.id}
+              >
+                {confirmAction.type === 'void' ? 'Yes, Void It' : 'Yes, Mark Completed'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+/* ── Helper component used inside the view detail modal ── */
+function TxInfoCard({ label, value, bold, children }: {
+  label: string; value?: string; bold?: boolean; children?: import('react').ReactNode;
+}) {
+  return (
+    <div className="rounded-lg px-3 py-2.5" style={{ background: 'var(--n-input-bg)' }}>
+      <p className="text-xs font-medium mb-0.5" style={{ color: 'var(--n-text-secondary)' }}>{label}</p>
+      {children ?? (
+        <p className={`text-sm ${bold ? 'font-bold' : ''}`} style={{ color: bold ? 'var(--n-text)' : 'var(--n-text)' }}>{value}</p>
+      )}
     </div>
   );
 }

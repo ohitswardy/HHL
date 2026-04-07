@@ -7,7 +7,7 @@ const links = [
   { to: '/accounting/reports/income', label: 'Income Statement', desc: 'Revenue, COGS, and expenses', icon: <HiCash className="w-8 h-8" />, color: 'text-[var(--n-success)] bg-[var(--n-success-glow)]' },
   { to: '/accounting/reports/balance-sheet', label: 'Balance Sheet', desc: 'Assets, liabilities, and equity', icon: <HiChartBar className="w-8 h-8" />, color: 'text-[var(--n-accent)] bg-[var(--n-accent-glow)]' },
   { to: '/accounting/reports/cash-flow', label: 'Cash Flow', desc: 'Inflows and outflows of cash', icon: <HiDocumentText className="w-8 h-8" />, color: 'text-[var(--n-warning)] bg-[var(--n-warning-glow)]' },
-  { to: '/accounting/client-statements', label: 'Client Statements', desc: 'Account statements per client', icon: <HiUserGroup className="w-8 h-8" />, color: 'text-[var(--n-text-secondary)] bg-[var(--n-inset)]' },
+  { to: '/accounting/reports/client-statements', label: 'Client Statements', desc: 'Account statements per client', icon: <HiUserGroup className="w-8 h-8" />, color: 'text-[var(--n-text-secondary)] bg-[var(--n-inset)]' },
 ];
 
 export function AccountingDashboard() {

@@ -45,4 +45,19 @@ class Client extends Model
     {
         return $this->hasMany(ClientStatement::class);
     }
+
+    public function scopeWithComputedBalance($query)
+    {
+        return $query->selectRaw(
+            'clients.*, ' .
+            '(SELECT COALESCE(SUM(p.amount), 0) ' .
+            ' FROM payments p ' .
+            ' INNER JOIN sales_transactions st ON p.sales_transaction_id = st.id ' .
+            ' WHERE st.client_id = clients.id ' .
+            '   AND p.status = "pending" ' .
+            '   AND p.payment_method IN ("credit", "bank_transfer", "check") ' .
+            '   AND p.deleted_at IS NULL ' .
+            '   AND st.deleted_at IS NULL) as outstanding_balance'
+        );
+    }
 }
