@@ -352,10 +352,6 @@ body {
 .neu-select-chevron.open { transform: translateY(-50%) rotate(180deg); }
 
 .neu-select-panel {
-  position: absolute;
-  z-index: 1100;
-  left: 0; right: 0;
-  margin-top: 6px;
   background: var(--n-surface-raised);
   border-radius: 14px;
   box-shadow:

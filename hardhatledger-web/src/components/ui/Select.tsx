@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
+import { createPortal } from 'react-dom';
 import { HiCheck, HiChevronDown } from 'react-icons/hi';
 
 export interface SelectOption {
@@ -39,6 +40,7 @@ export function Select({
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [focusedIdx, setFocusedIdx] = useState(-1);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -53,17 +55,35 @@ export function Select({
     return options.filter((o) => o.label.toLowerCase().includes(q));
   }, [options, search]);
 
-  // Close on outside click
+  const computePanelStyle = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setPanelStyle({
+      position: 'fixed',
+      top: rect.bottom + 6,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 1100,
+    });
+  }, []);
+
+  // Close on outside click — must also check portal panel clicks
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Check if click is inside the container or the portal panel
+      const panelEl = document.getElementById(`${id}-list`);
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        !(panelEl && panelEl.contains(target))
+      ) {
         setIsOpen(false);
         setSearch('');
       }
     };
     if (isOpen) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [isOpen]);
+  }, [isOpen, id]);
 
   // Focus search when opened
   useEffect(() => {
@@ -83,6 +103,18 @@ export function Select({
     el?.scrollIntoView({ block: 'nearest' });
   }, [focusedIdx, isOpen]);
 
+  // Reposition on scroll/resize while open
+  useEffect(() => {
+    if (!isOpen) return;
+    const reposition = () => computePanelStyle();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [isOpen, computePanelStyle]);
+
   const doSelect = useCallback(
     (opt: SelectOption) => {
       onChange?.({ target: { value: String(opt.value) } });
@@ -99,12 +131,12 @@ export function Select({
         case 'Enter':
         case ' ':
           e.preventDefault();
-          if (!isOpen) { setIsOpen(true); }
+          if (!isOpen) { computePanelStyle(); setIsOpen(true); }
           else if (focusedIdx >= 0 && focusedIdx < filtered.length) { doSelect(filtered[focusedIdx]); }
           break;
         case 'ArrowDown':
           e.preventDefault();
-          if (!isOpen) { setIsOpen(true); }
+          if (!isOpen) { computePanelStyle(); setIsOpen(true); }
           else { setFocusedIdx((i) => Math.min(i + 1, filtered.length - 1)); }
           break;
         case 'ArrowUp':
@@ -120,14 +152,14 @@ export function Select({
           break;
       }
     },
-    [disabled, isOpen, focusedIdx, filtered, doSelect],
+    [disabled, isOpen, focusedIdx, filtered, doSelect, computePanelStyle],
   );
 
   const triggerId = `${id}-trigger`;
   const listId = `${id}-list`;
 
   return (
-    <div ref={containerRef} className={`w-full ${inline ? 'neu-select-inline' : ''} ${className}`} style={{ position: 'relative' }}>
+    <div ref={containerRef} className={`w-full ${inline ? 'neu-select-inline' : ''} ${className}`}>
       {label && <label className="neu-label" htmlFor={triggerId}>{label}</label>}
       <div
         className={`neu-inset${error ? ' shadow-[inset_3px_3px_6px_var(--n-shadow-dark-sm),inset_-3px_-3px_6px_var(--n-shadow-light-sm),0_0_0_1.5px_var(--n-danger)]' : ''}`}
@@ -137,7 +169,7 @@ export function Select({
           type="button"
           id={triggerId}
           className={`neu-select-trigger${!selectedOption ? ' placeholder' : ''}`}
-          onClick={() => !disabled && setIsOpen((v) => !v)}
+          onClick={() => { if (!disabled) { computePanelStyle(); setIsOpen((v) => !v); } }}
           onKeyDown={handleKeyDown}
           disabled={disabled}
           role="combobox"
@@ -152,8 +184,8 @@ export function Select({
         {name && <input type="hidden" name={name} value={value ?? ''} />}
       </div>
 
-      {isOpen && (
-        <div className="neu-select-panel" role="listbox" id={listId} aria-label={label || 'Options'}>
+      {isOpen && createPortal(
+        <div className="neu-select-panel" role="listbox" id={listId} aria-label={label || 'Options'} style={panelStyle}>
           {showSearch && (
             <div className="neu-select-search">
               <input
@@ -190,7 +222,8 @@ export function Select({
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
       {error && <p className="neu-error">{error}</p>}
     </div>

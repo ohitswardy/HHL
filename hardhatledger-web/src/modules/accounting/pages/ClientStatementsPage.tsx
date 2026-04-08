@@ -4,7 +4,7 @@ import { DatePicker } from '../../../components/ui/DatePicker';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiPrinter, HiChevronLeft, HiChevronRight, HiDocumentDownload, HiChevronDown } from 'react-icons/hi';
+import { HiPrinter, HiChevronLeft, HiChevronRight, HiDocumentDownload, HiChevronDown, HiSearch, HiX } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Client, SalesTransaction } from '../../../types';
@@ -29,6 +29,10 @@ export function ClientStatementsPage() {
   const [startDate, setStartDate] = useState(dayjs().startOf('month').format('YYYY-MM-DD'));
   const [endDate, setEndDate] = useState(dayjs().format('YYYY-MM-DD'));
   const [statusFilter, setStatusFilter] = useState('');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('');
+  const [searchTx, setSearchTx] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
 
   const [transactions, setTransactions] = useState<SalesTransaction[]>([]);
   const [loadingTx, setLoadingTx] = useState(false);
@@ -64,11 +68,15 @@ export function ClientStatementsPage() {
     setLoadingTx(true);
     const params: Record<string, unknown> = { client_id: clientId, from: startDate, to: endDate, page, per_page: 20 };
     if (statusFilter) params.status = statusFilter;
+    if (paymentMethodFilter) params.payment_method = paymentMethodFilter;
+    if (searchTx.trim()) params.search = searchTx.trim();
+    if (minAmount !== '') params.min_amount = minAmount;
+    if (maxAmount !== '') params.max_amount = maxAmount;
     api.get('/pos/sales', { params })
       .then((res) => { setTransactions(res.data.data); setMeta(res.data.meta); })
       .catch(() => toast.error('Failed to load transactions'))
       .finally(() => setLoadingTx(false));
-  }, [clientId, startDate, endDate, statusFilter, page]);
+  }, [clientId, startDate, endDate, statusFilter, paymentMethodFilter, searchTx, minAmount, maxAmount, page]);
 
   // Fetch statement summary (non-voided totals)
   useEffect(() => {
@@ -85,6 +93,15 @@ export function ClientStatementsPage() {
   const changeStartDate = (d: string) => { setStartDate(d); setPage(1); };
   const changeEndDate = (d: string) => { setEndDate(d); setPage(1); };
   const changeStatus = (s: string) => { setStatusFilter(s); setPage(1); };
+  const changePaymentMethod = (s: string) => { setPaymentMethodFilter(s); setPage(1); };
+  const changeSearch = (s: string) => { setSearchTx(s); setPage(1); };
+  const changeMinAmount = (s: string) => { setMinAmount(s); setPage(1); };
+  const changeMaxAmount = (s: string) => { setMaxAmount(s); setPage(1); };
+
+  const hasActiveFilters = !!(statusFilter || paymentMethodFilter || searchTx || minAmount || maxAmount);
+  const clearAllFilters = () => {
+    setStatusFilter(''); setPaymentMethodFilter(''); setSearchTx(''); setMinAmount(''); setMaxAmount(''); setPage(1);
+  };
 
   const selectedClient = clients.find((c) => String(c.id) === clientId);
 
@@ -289,25 +306,84 @@ export function ClientStatementsPage() {
           {/* Transactions Table */}
           <Card className="overflow-hidden">
             {/* Table toolbar */}
-            <div className="p-4 border-b border-(--n-border) flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-(--n-text)">Transactions</h3>
-                {!loadingTx && (
-                  <span className="text-sm" style={{ color: 'var(--n-text-secondary)' }}>
-                    ({meta.total} found)
-                  </span>
+            <div className="p-4 border-b border-(--n-border) space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-(--n-text)">Transactions</h3>
+                  {!loadingTx && (
+                    <span className="text-sm" style={{ color: 'var(--n-text-secondary)' }}>
+                      ({meta.total} found)
+                    </span>
+                  )}
+                </div>
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearAllFilters}
+                    className="neu-btn neu-btn-secondary text-xs"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                  >
+                    <HiX className="w-3 h-3" />
+                    Clear filters
+                  </button>
                 )}
               </div>
-              <Select
-                value={statusFilter}
-                onChange={(e) => changeStatus(e.target.value)}
-                options={[
-                  { value: '', label: 'All Statuses' },
-                  { value: 'pending', label: 'Pending' },
-                  { value: 'completed', label: 'Completed' },
-                  { value: 'voided', label: 'Voided' },
-                ]}
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
+                {/* Search by transaction # */}
+                <div className="relative lg:col-span-2">
+                  <HiSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--n-text-dim)' }} />
+                  <input
+                    type="text"
+                    value={searchTx}
+                    onChange={(e) => changeSearch(e.target.value)}
+                    placeholder="Search transaction #..."
+                    className="neu-input w-full pl-8"
+                  />
+                </div>
+                {/* Status */}
+                <Select
+                  value={statusFilter}
+                  onChange={(e) => changeStatus(e.target.value)}
+                  options={[
+                    { value: '', label: 'All Statuses' },
+                    { value: 'pending', label: 'Pending' },
+                    { value: 'completed', label: 'Completed' },
+                    { value: 'voided', label: 'Voided' },
+                  ]}
+                />
+                {/* Payment method */}
+                <Select
+                  value={paymentMethodFilter}
+                  onChange={(e) => changePaymentMethod(e.target.value)}
+                  options={[
+                    { value: '', label: 'All Payments' },
+                    { value: 'cash', label: 'Cash' },
+                    { value: 'card', label: 'Card' },
+                    { value: 'bank_transfer', label: 'Bank Transfer' },
+                    { value: 'check', label: 'Check' },
+                    { value: 'credit', label: 'Credit' },
+                  ]}
+                />
+                {/* Amount range */}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={minAmount}
+                    onChange={(e) => changeMinAmount(e.target.value)}
+                    placeholder="Min ₱"
+                    min={0}
+                    className="neu-input w-full"
+                  />
+                  <span style={{ color: 'var(--n-text-dim)' }}>–</span>
+                  <input
+                    type="number"
+                    value={maxAmount}
+                    onChange={(e) => changeMaxAmount(e.target.value)}
+                    placeholder="Max ₱"
+                    min={0}
+                    className="neu-input w-full"
+                  />
+                </div>
+              </div>
             </div>
 
             {loadingTx ? (

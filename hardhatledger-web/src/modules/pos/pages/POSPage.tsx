@@ -4,7 +4,7 @@ import { Card } from '../../../components/ui/Card';
 import { Select } from '../../../components/ui/Select';
 import { Modal } from '../../../components/ui/Modal';
 import { Badge } from '../../../components/ui/Badge';
-import { HiSearch, HiPlus, HiMinus, HiTrash, HiShoppingCart, HiLightningBolt, HiClock } from 'react-icons/hi';
+import { HiSearch, HiPlus, HiMinus, HiTrash, HiShoppingCart, HiLightningBolt, HiClock, HiTag } from 'react-icons/hi';
 import { useCartStore } from '../../../stores/cartStore';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
@@ -29,6 +29,7 @@ export function POSPage() {
   const [saleNotes, setSaleNotes] = useState('');
   const [paymentTermsModal, setPaymentTermsModal] = useState(false);
   const [paymentTermsData, setPaymentTermsData] = useState<PaymentTermsData | null>(null);
+  const [discountEdit, setDiscountEdit] = useState<Record<number, string>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const skuRef = useRef<HTMLInputElement>(null);
 
@@ -283,25 +284,72 @@ export function POSPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto" style={{ borderBottom: '1px solid var(--n-divider)' }}>
-            {cart.items.map((item) => (
-              <div key={item.product.id} className="p-3" style={{ borderBottom: '1px solid var(--n-divider)' }}>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.product.name}</p>
-                    <p className="text-xs" style={{ color: "var(--n-text-secondary)" }}>{item.unit_price.toFixed(2)} each</p>
+            {cart.items.map((item) => {
+              const isEditingDiscount = item.product.id in discountEdit;
+              const applyDiscount = () => {
+                const val = Math.max(0, parseFloat(discountEdit[item.product.id] || '0') || 0);
+                const maxDiscount = item.quantity * item.unit_price;
+                cart.updateDiscount(item.product.id, Math.min(val, maxDiscount));
+                setDiscountEdit((prev) => { const n = { ...prev }; delete n[item.product.id]; return n; });
+              };
+              return (
+                <div key={item.product.id} className="p-3" style={{ borderBottom: '1px solid var(--n-divider)' }}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.product.name}</p>
+                      <p className="text-xs" style={{ color: "var(--n-text-secondary)" }}>{item.unit_price.toFixed(2)} each</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          if (isEditingDiscount) {
+                            setDiscountEdit((prev) => { const n = { ...prev }; delete n[item.product.id]; return n; });
+                          } else {
+                            setDiscountEdit((prev) => ({ ...prev, [item.product.id]: item.discount > 0 ? item.discount.toFixed(2) : '' }));
+                          }
+                        }}
+                        className="neu-btn-icon"
+                        title="Apply item discount"
+                        style={item.discount > 0 ? { color: 'var(--n-danger)' } : undefined}
+                      >
+                        <HiTag className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => cart.removeItem(item.product.id)} className="neu-btn-icon danger"><HiTrash className="w-4 h-4" /></button>
+                    </div>
                   </div>
-                  <button onClick={() => cart.removeItem(item.product.id)} className="neu-btn-icon danger"><HiTrash className="w-4 h-4" /></button>
-                </div>
-                <div className="flex items-center justify-between mt-2">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => cart.updateQuantity(item.product.id, Math.max(1, item.quantity - 1))} className="neu-qty-btn"><HiMinus className="w-3 h-3" /></button>
-                    <span className="w-8 text-center font-semibold">{item.quantity}</span>
-                    <button onClick={() => cart.updateQuantity(item.product.id, item.quantity + 1)} className="neu-qty-btn"><HiPlus className="w-3 h-3" /></button>
+                  {isEditingDiscount && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <span className="text-xs" style={{ color: 'var(--n-text-dim)' }}>Disc ₱</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        autoFocus
+                        className="neu-inline-input flex-1 text-right"
+                        style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
+                        value={discountEdit[item.product.id]}
+                        onChange={(e) => setDiscountEdit((prev) => ({ ...prev, [item.product.id]: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') applyDiscount(); if (e.key === 'Escape') setDiscountEdit((prev) => { const n = { ...prev }; delete n[item.product.id]; return n; }); }}
+                      />
+                      <button onClick={applyDiscount} className="neu-btn-icon" style={{ color: 'var(--n-success)' }} title="Apply">
+                        ✓
+                      </button>
+                    </div>
+                  )}
+                  {!isEditingDiscount && item.discount > 0 && (
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--n-danger)' }}>-₱{item.discount.toFixed(2)} disc</p>
+                  )}
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => cart.updateQuantity(item.product.id, Math.max(1, item.quantity - 1))} className="neu-qty-btn"><HiMinus className="w-3 h-3" /></button>
+                      <span className="w-8 text-center font-semibold">{item.quantity}</span>
+                      <button onClick={() => cart.updateQuantity(item.product.id, item.quantity + 1)} className="neu-qty-btn"><HiPlus className="w-3 h-3" /></button>
+                    </div>
+                    <span className="font-semibold">{item.line_total.toFixed(2)}</span>
                   </div>
-                  <span className="font-semibold">{item.line_total.toFixed(2)}</span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {cart.items.length === 0 && <p className="text-center py-12 text-sm" style={{ color: 'var(--n-text-dim)' }}>No items in cart</p>}
           </div>
 
