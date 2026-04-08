@@ -15,6 +15,7 @@ class ChartOfAccount extends Model
         'code',
         'name',
         'type',
+        'detail_type',
         'parent_id',
         'is_active',
         'branch_id',

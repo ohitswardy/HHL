@@ -49,6 +49,7 @@ export interface Supplier {
   address: string | null;
   payment_terms: string | null;
   notes: string | null;
+  is_vatable: boolean;
   created_at: string;
 }
 
@@ -169,6 +170,7 @@ export interface ChartOfAccount {
   code: string;
   name: string;
   type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+  detail_type: string | null;
   parent_id: number | null;
   is_active: boolean;
   balance: number;

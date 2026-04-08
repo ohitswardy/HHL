@@ -21,6 +21,7 @@ class StoreSupplierRequest extends FormRequest
             'address' => ['nullable', 'string', 'max:500'],
             'payment_terms' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
+            'is_vatable' => ['nullable', 'boolean'],
         ];
     }
 }

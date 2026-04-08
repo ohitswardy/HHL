@@ -6,29 +6,41 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class PurchaseOrder extends Model
+class Expense extends Model
 {
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'po_number',
+        'expense_number',
+        'date',
+        'reference_number',
+        'payee',
         'supplier_id',
-        'user_id',
-        'status',
+        'expense_category_id',
+        'subtotal',
+        'tax_amount',
         'total_amount',
-        'expected_date',
-        'received_date',
         'notes',
+        'status',
+        'source',
+        'purchase_order_id',
+        'user_id',
         'branch_id',
     ];
 
     protected function casts(): array
     {
         return [
+            'date' => 'date',
+            'subtotal' => 'decimal:2',
+            'tax_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
-            'expected_date' => 'date',
-            'received_date' => 'date',
         ];
+    }
+
+    public function category()
+    {
+        return $this->belongsTo(ExpenseCategory::class, 'expense_category_id');
     }
 
     public function supplier()
@@ -41,13 +53,8 @@ class PurchaseOrder extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function items()
+    public function purchaseOrder()
     {
-        return $this->hasMany(PurchaseOrderItem::class);
-    }
-
-    public function expense()
-    {
-        return $this->hasOne(\App\Models\Expense::class, 'purchase_order_id');
+        return $this->belongsTo(PurchaseOrder::class);
     }
 }

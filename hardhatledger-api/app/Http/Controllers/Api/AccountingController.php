@@ -7,6 +7,8 @@ use App\Http\Resources\ChartOfAccountResource;
 use App\Http\Resources\JournalEntryResource;
 use App\Models\ChartOfAccount;
 use App\Models\Client;
+use App\Models\Expense;
+use App\Models\ExpenseCategory;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\Payment;
@@ -27,6 +29,90 @@ class AccountingController extends Controller
             ->get();
 
         return response()->json(['data' => ChartOfAccountResource::collection($accounts)]);
+    }
+
+    public function chartOfAccountsFlat(): JsonResponse
+    {
+        $accounts = ChartOfAccount::orderBy('code')->get();
+
+        return response()->json(['data' => ChartOfAccountResource::collection($accounts)]);
+    }
+
+    public function storeAccount(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'code'        => 'required|string|max:20|unique:chart_of_accounts,code',
+            'name'        => 'required|string|max:255',
+            'type'        => 'required|in:asset,liability,equity,revenue,expense',
+            'detail_type' => 'nullable|string|max:255',
+            'parent_id'   => 'nullable|integer|exists:chart_of_accounts,id',
+            'is_active'   => 'boolean',
+        ]);
+
+        $account = ChartOfAccount::create($validated);
+
+        return response()->json([
+            'data' => new ChartOfAccountResource($account),
+            'message' => 'Account created successfully.',
+        ], 201);
+    }
+
+    public function updateAccount(Request $request, int $id): JsonResponse
+    {
+        $account = ChartOfAccount::findOrFail($id);
+
+        $validated = $request->validate([
+            'code'        => 'required|string|max:20|unique:chart_of_accounts,code,' . $account->id,
+            'name'        => 'required|string|max:255',
+            'type'        => 'required|in:asset,liability,equity,revenue,expense',
+            'detail_type' => 'nullable|string|max:255',
+            'parent_id'   => 'nullable|integer|exists:chart_of_accounts,id',
+            'is_active'   => 'boolean',
+        ]);
+
+        $account->update($validated);
+
+        return response()->json([
+            'data' => new ChartOfAccountResource($account->fresh()),
+            'message' => 'Account updated successfully.',
+        ]);
+    }
+
+    public function destroyAccount(int $id): JsonResponse
+    {
+        $account = ChartOfAccount::findOrFail($id);
+
+        // Prevent deletion if account has journal lines
+        if ($account->journalLines()->exists()) {
+            return response()->json([
+                'message' => 'Cannot delete account with existing journal entries.',
+            ], 422);
+        }
+
+        // Prevent deletion if account has children
+        if ($account->children()->exists()) {
+            return response()->json([
+                'message' => 'Cannot delete account with child accounts.',
+            ], 422);
+        }
+
+        $account->delete();
+
+        return response()->json(['message' => 'Account deleted successfully.']);
+    }
+
+    public function chartOfAccountsPdf(): Response
+    {
+        $accounts = ChartOfAccount::whereNotNull('parent_id')
+            ->orderBy('code')
+            ->get();
+
+        $pdf = Pdf::loadView('reports.chart-of-accounts', [
+            'accounts' => $accounts,
+            'generated_at' => now()->format('n/j/Y'),
+        ]);
+
+        return $pdf->download('chart-of-accounts.pdf');
     }
 
     public function journalEntries(Request $request): JsonResponse
@@ -67,103 +153,200 @@ class AccountingController extends Controller
         $start = $request->start_date;
         $end = $request->end_date;
 
-        // Helper: sum net amount for an account code (credit - debit for revenue, debit - credit for expense)
-        $sumAccount = function (string $code, bool $isRevenue) use ($start, $end): float {
-            $account = ChartOfAccount::where('code', $code)->first();
-            if (!$account) return 0.0;
-            $raw = $isRevenue ? 'credit - debit' : 'debit - credit';
-            return (float) JournalLine::where('account_id', $account->id)
-                ->whereHas('journalEntry', fn ($q) => $q->whereBetween('date', [$start, $end]))
-                ->sum(DB::raw($raw));
-        };
+        $data = $this->buildIncomeStatement($start, $end);
 
-        // Helper: sum all child accounts of a type, excluding specific codes
-        $sumType = function (string $type, bool $isRevenue, array $excludeCodes = []) use ($start, $end): float {
-            $raw = $isRevenue ? 'credit - debit' : 'debit - credit';
-            return (float) JournalLine::whereHas('journalEntry', fn ($q) =>
-                    $q->whereBetween('date', [$start, $end])
-                )
-                ->whereHas('account', fn ($q) =>
-                    $q->where('type', $type)
-                        ->whereNotNull('parent_id')
-                        ->when($excludeCodes, fn ($q) => $q->whereNotIn('code', $excludeCodes))
-                )
-                ->sum(DB::raw($raw));
-        };
+        return response()->json($data);
+    }
 
-        // --- Income section ---
-        // Sales (VATable): account 4010 — Sales Revenue (VAT-bearing sales)
-        $salesVatable   = $sumAccount('4010', true);
-        // Sales (NonVAT): account 4020 — Other Income (non-vat receipts, walk-in, etc.)
-        $salesNonVat    = $sumAccount('4020', true);
-        $totalIncome    = $salesVatable + $salesNonVat;
-
-        // --- Cost of Sales section ---
-        // COGS NonVATable: account 5011 (if exists), fallback 0
-        $cogsNonVat     = $sumAccount('5011', false);
-        // COGS VATable: account 5010 — Cost of Goods Sold
-        $cogsVatable    = $sumAccount('5010', false);
-        $totalCogs      = $cogsNonVat + $cogsVatable;
-
-        $grossProfit    = $totalIncome - $totalCogs;
-
-        // --- Expenses section ---
-        // Other Expenses: all expense accounts except COGS (5010, 5011)
-        $otherExpenseAccounts = ChartOfAccount::where('type', 'expense')
+    /**
+     * Generate the Income Statement data matching the QuickBooks P&L format.
+     */
+    private function buildIncomeStatement(string $start, string $end): array
+    {
+        // ── INCOME (revenue accounts) ──
+        $incomeAccounts = ChartOfAccount::where('type', 'revenue')
             ->whereNotNull('parent_id')
-            ->whereNotIn('code', ['5010', '5011'])
+            ->orderBy('code')
             ->get()
-            ->map(fn ($a) => [
-                'code'   => $a->code,
-                'name'   => $a->name,
-                'amount' => (float) JournalLine::where('account_id', $a->id)
+            ->map(function ($account) use ($start, $end) {
+                $amount = (float) JournalLine::where('account_id', $account->id)
                     ->whereHas('journalEntry', fn ($q) => $q->whereBetween('date', [$start, $end]))
-                    ->sum(DB::raw('debit - credit')),
-            ])
+                    ->sum(DB::raw('credit - debit'));
+                return [
+                    'code'   => $account->code,
+                    'name'   => $account->name,
+                    'amount' => $amount,
+                ];
+            })
+            ->filter(fn ($a) => abs($a['amount']) >= 0.01)
+            ->values();
+
+        $totalIncome = $incomeAccounts->sum('amount');
+
+        // ── COST OF SALES (expense accounts in 50xx range) ──
+        $cosCodes = ['5010', '5011', '5060']; // COGS VATable, COGS NonVATable, Cost of Sales
+
+        // Part 1 (journal): COGS from sales journal entries (the normal path)
+        $cosJournalMap = ChartOfAccount::where('type', 'expense')
+            ->whereIn('code', $cosCodes)
+            ->orderBy('code')
+            ->get()
+            ->mapWithKeys(function ($account) use ($start, $end) {
+                $amount = (float) JournalLine::where('account_id', $account->id)
+                    ->whereHas('journalEntry', fn ($q) => $q->whereBetween('date', [$start, $end]))
+                    ->sum(DB::raw('debit - credit'));
+                return [$account->code => [
+                    'code'   => $account->code,
+                    'name'   => $account->name,
+                    'amount' => $amount,
+                ]];
+            });
+
+        // ── ONE PASS: query all direct expenses and split into COGS vs other ──
+        // Covers PO-sourced and any non-journaled expenses for both sections.
+        $allDirectExpenses = Expense::with('category')
+            ->whereIn('status', ['recorded', 'confirmed'])
+            ->whereNotNull('expense_category_id')
+            ->whereBetween('date', [$start, $end])
+            ->get()
+            ->groupBy(fn ($e) => $e->category?->account_code)
+            ->map(function ($group, $accountCode) {
+                if (!$accountCode) {
+                    return null;
+                }
+                $category = $group->first()->category;
+                return [
+                    'code'          => (string) $accountCode,
+                    'name'          => $category?->name ?? $accountCode,
+                    'direct_amount' => $group->sum(fn ($e) => (float) $e->subtotal),
+                    'count'         => $group->count(),
+                ];
+            })
+            ->filter();
+
+        $directCosExpenses   = $allDirectExpenses->filter(fn ($d) => in_array($d['code'], $cosCodes))->values();
+        $directOtherExpenses = $allDirectExpenses->filter(fn ($d) => !in_array($d['code'], $cosCodes))->values();
+
+        // Merge COGS: if no journal entry for a COS category, fill from direct expenses
+        $cosMap = $cosJournalMap->toArray();
+        foreach ($directCosExpenses as $direct) {
+            $code = $direct['code'];
+            $hasJournalEntry = isset($cosMap[$code]) && abs($cosMap[$code]['amount']) >= 0.01;
+            if (!$hasJournalEntry) {
+                $cosMap[$code] = [
+                    'code'   => $code,
+                    'name'   => $direct['name'],
+                    'amount' => $direct['direct_amount'],
+                    'source' => 'expenses',
+                    'count'  => $direct['count'],
+                ];
+            } else {
+                $cosMap[$code]['source'] = 'journal';
+                $cosMap[$code]['count']  = $direct['count'];
+            }
+        }
+
+        $cosAccounts = collect($cosMap)
+            ->filter(fn ($a) => abs($a['amount']) >= 0.01)
+            ->sortBy('code')
+            ->values();
+
+        $totalCos    = $cosAccounts->sum('amount');
+        $grossProfit = $totalIncome - $totalCos;
+
+        // ── OTHER EXPENSES (all expense accounts NOT in the COS list) ──
+        // Part 1: Journal-based amounts (manual expenses that posted journal entries)
+        $journalExpenseMap = ChartOfAccount::where('type', 'expense')
+            ->whereNotNull('parent_id')
+            ->whereNotIn('code', $cosCodes)
+            ->orderBy('code')
+            ->get()
+            ->mapWithKeys(function ($account) use ($start, $end) {
+                $amount = (float) JournalLine::where('account_id', $account->id)
+                    ->whereHas('journalEntry', fn ($q) => $q->whereBetween('date', [$start, $end]))
+                    ->sum(DB::raw('debit - credit'));
+                return [$account->code => [
+                    'code'   => $account->code,
+                    'name'   => $account->name,
+                    'amount' => $amount,
+                ]];
+            });
+
+        // Merge other expenses: fill from direct expenses where no journal entry exists
+        $mergedMap = $journalExpenseMap->toArray();
+        foreach ($directOtherExpenses as $direct) {
+            $code = $direct['code'];
+            $hasJournalEntry = isset($mergedMap[$code]) && abs($mergedMap[$code]['amount']) >= 0.01;
+            if (!$hasJournalEntry) {
+                $mergedMap[$code] = [
+                    'code'   => $code,
+                    'name'   => $direct['name'],
+                    'amount' => $direct['direct_amount'],
+                    'source' => 'expenses',
+                    'count'  => $direct['count'],
+                ];
+            } else {
+                $mergedMap[$code]['source'] = 'journal';
+                $mergedMap[$code]['count']  = $direct['count'];
+            }
+        }
+
+        $otherExpenseAccounts = collect($mergedMap)
+            ->filter(fn ($a) => abs($a['amount']) >= 0.01)
+            ->sortBy('code')
             ->values();
 
         $totalOtherExpenses = $otherExpenseAccounts->sum('amount');
+        $netIncome = $grossProfit - $totalOtherExpenses;
 
-        // Reconciliation Discrepancies: difference between total income recorded and
-        // the sum of all revenue lines (catches rounding / unposted adjustments)
-        $allRevenue = $sumType('revenue', true);
-        $reconciliation = round($allRevenue - $totalIncome, 2);
-
-        $totalExpenses  = $totalOtherExpenses + $reconciliation;
-        $netIncome      = $grossProfit - $totalExpenses;
-
-        return response()->json([
-            'period'                  => ['start' => $start, 'end' => $end],
+        return [
+            'period'                 => ['start' => $start, 'end' => $end],
             // Income
-            'sales_vatable'           => $salesVatable,
-            'sales_non_vat'           => $salesNonVat,
-            'total_income'            => $totalIncome,
+            'income'                 => $incomeAccounts,
+            'total_income'           => $totalIncome,
             // Cost of Sales
-            'cogs_non_vat'            => $cogsNonVat,
-            'cogs_vatable'            => $cogsVatable,
-            'total_cogs'              => $totalCogs,
-            // Profit
-            'gross_profit'            => $grossProfit,
-            // Expenses
-            'other_expense_accounts'  => $otherExpenseAccounts,
-            'total_other_expenses'    => $totalOtherExpenses,
-            'reconciliation'          => $reconciliation,
-            'total_expenses'          => $totalExpenses,
-            'net_income'              => $netIncome,
-            // Legacy fields kept for backward compat
-            'revenue'                 => $totalIncome,
-            'cost_of_goods_sold'      => $totalCogs,
-            'expenses'                => $totalExpenses,
-        ]);
+            'cost_of_sales'          => $cosAccounts,
+            'total_cost_of_sales'    => $totalCos,
+            // Gross Profit
+            'gross_profit'           => $grossProfit,
+            // Other Expenses
+            'other_expense_accounts' => $otherExpenseAccounts,
+            'total_other_expenses'   => $totalOtherExpenses,
+            // Net Earnings
+            'net_income'             => $netIncome,
+            // Backward-compatible aliases
+            'sales_vatable'          => $incomeAccounts->firstWhere('code', '4010')['amount'] ?? 0,
+            'sales_non_vat'          => $incomeAccounts->firstWhere('code', '4020')['amount'] ?? 0,
+            'cogs_non_vat'           => $cosAccounts->firstWhere('code', '5011')['amount'] ?? 0,
+            'cogs_vatable'           => $cosAccounts->firstWhere('code', '5010')['amount'] ?? 0,
+            'total_cogs'             => $totalCos,
+            'reconciliation'         => $otherExpenseAccounts->firstWhere('code', '6230')['amount'] ?? 0,
+            'total_expenses'         => $totalOtherExpenses,
+            'revenue'                => $totalIncome,
+            'cost_of_goods_sold'     => $totalCos,
+            'expenses'               => $totalOtherExpenses,
+        ];
     }
 
     public function balanceSheet(Request $request): JsonResponse
     {
         $asOf = $request->get('as_of_date', now()->toDateString());
 
-        $getBalance = function (string $type) use ($asOf) {
+        $data = $this->buildBalanceSheet($asOf);
+
+        return response()->json($data);
+    }
+
+    /**
+     * Build balance sheet data grouped by accountant categories.
+     * AR → Cash → Banks → Input VAT | VAT Payable | Net Income
+     */
+    private function buildBalanceSheet(string $asOf): array
+    {
+        $getAccounts = function (string $type) use ($asOf) {
             return ChartOfAccount::where('type', $type)
                 ->whereNotNull('parent_id')
+                ->orderBy('code')
                 ->get()
                 ->map(function ($account) use ($asOf, $type) {
                     $query = JournalLine::where('account_id', $account->id)
@@ -174,28 +357,86 @@ class AccountingController extends Controller
                         : $query->sum(DB::raw('credit - debit'));
 
                     return [
-                        'code' => $account->code,
-                        'name' => $account->name,
+                        'code'    => $account->code,
+                        'name'    => $account->name,
                         'balance' => (float) $balance,
                     ];
                 });
         };
 
-        $assets = $getBalance('asset');
-        $liabilities = $getBalance('liability');
-        $equity = $getBalance('equity');
+        $assets      = $getAccounts('asset');
+        $liabilities = $getAccounts('liability');
+        $equity      = $getAccounts('equity');
 
-        $totalAssets = $assets->sum('balance');
-        $totalLiabilities = $liabilities->sum('balance');
-        $totalEquity = $equity->sum('balance');
+        // ── Group assets ──
+        $arCodes    = ['1100', '1120'];
+        $fixedCodes = ['1500', '1550'];
 
-        return response()->json([
-            'as_of_date' => $asOf,
-            'assets' => ['accounts' => $assets, 'total' => (float) $totalAssets],
-            'liabilities' => ['accounts' => $liabilities, 'total' => (float) $totalLiabilities],
-            'equity' => ['accounts' => $equity, 'total' => (float) $totalEquity],
-            'total_liabilities_equity' => (float) ($totalLiabilities + $totalEquity),
-        ]);
+        $accountsReceivable = $assets->filter(fn ($a) => in_array($a['code'], $arCodes))
+            ->filter(fn ($a) => abs($a['balance']) >= 0.01)->values();
+        $totalAR = (float) $accountsReceivable->sum('balance');
+
+        $fixedAssets = $assets->filter(fn ($a) => in_array($a['code'], $fixedCodes))
+            ->filter(fn ($a) => abs($a['balance']) >= 0.01)->values();
+        $totalFixed = (float) $fixedAssets->sum('balance');
+
+        // Other current: cash, banks, inventory, input VAT, etc.
+        $otherCurrentAssets = $assets
+            ->reject(fn ($a) => in_array($a['code'], array_merge($arCodes, $fixedCodes)))
+            ->filter(fn ($a) => abs($a['balance']) >= 0.01)->values();
+        $totalOtherCurrent = (float) $otherCurrentAssets->sum('balance');
+
+        $totalCurrentAssets = $totalAR + $totalOtherCurrent;
+        $totalAssets        = $totalCurrentAssets + $totalFixed;
+
+        // ── Group liabilities ──
+        $currentLiabilityCodes  = ['2010', '2020', '2100', '2110'];
+        $currentLiabilities     = $liabilities->filter(fn ($a) => in_array($a['code'], $currentLiabilityCodes))
+            ->filter(fn ($a) => abs($a['balance']) >= 0.01)->values();
+        $totalCurrentLiabilities = (float) $currentLiabilities->sum('balance');
+
+        $nonCurrentLiabilities      = $liabilities->reject(fn ($a) => in_array($a['code'], $currentLiabilityCodes))
+            ->filter(fn ($a) => abs($a['balance']) >= 0.01)->values();
+        $totalNonCurrentLiabilities = (float) $nonCurrentLiabilities->sum('balance');
+        $totalLiabilities           = $totalCurrentLiabilities + $totalNonCurrentLiabilities;
+
+        // ── Equity ──
+        $equityAccounts      = $equity->filter(fn ($a) => abs($a['balance']) >= 0.01)->values();
+        $totalEquityAccounts = (float) $equityAccounts->sum('balance');
+
+        // ── Net Income (Revenue − Expenses through as-of date) ──
+        $totalRevenue = (float) JournalLine::whereHas('account', fn ($q) => $q->where('type', 'revenue'))
+            ->whereHas('journalEntry', fn ($q) => $q->whereDate('date', '<=', $asOf))
+            ->sum(DB::raw('credit - debit'));
+
+        $totalExpenses = (float) JournalLine::whereHas('account', fn ($q) => $q->where('type', 'expense'))
+            ->whereHas('journalEntry', fn ($q) => $q->whereDate('date', '<=', $asOf))
+            ->sum(DB::raw('debit - credit'));
+
+        $netIncome   = $totalRevenue - $totalExpenses;
+        $totalEquity = $totalEquityAccounts + $netIncome;
+
+        return [
+            'as_of_date'                    => $asOf,
+            'accounts_receivable'           => $accountsReceivable,
+            'total_accounts_receivable'     => $totalAR,
+            'other_current_assets'          => $otherCurrentAssets,
+            'total_other_current'           => $totalOtherCurrent,
+            'total_current_assets'          => $totalCurrentAssets,
+            'fixed_assets'                  => $fixedAssets,
+            'total_fixed_assets'            => $totalFixed,
+            'total_assets'                  => $totalAssets,
+            'current_liabilities'           => $currentLiabilities,
+            'total_current_liabilities'     => $totalCurrentLiabilities,
+            'non_current_liabilities'       => $nonCurrentLiabilities,
+            'total_non_current_liabilities' => $totalNonCurrentLiabilities,
+            'total_liabilities'             => $totalLiabilities,
+            'equity_accounts'               => $equityAccounts,
+            'total_equity_accounts'         => $totalEquityAccounts,
+            'net_income'                    => $netIncome,
+            'total_equity'                  => $totalEquity,
+            'total_liabilities_equity'      => $totalLiabilities + $totalEquity,
+        ];
     }
 
     public function cashFlow(Request $request): JsonResponse
@@ -223,8 +464,12 @@ class AccountingController extends Controller
 
         // ── 1. OPERATING ACTIVITIES (indirect method) ────────────────────────
         // Start with net income components
-        $revenue   = $netAccount('4010', 'credit_minus_debit');  // Sales Revenue
-        $cogs      = $netAccount('5010', 'debit_minus_credit');  // COGS
+        $revenueSales   = $netAccount('4010', 'credit_minus_debit');  // Sales (NON-VAT)
+        $revenueVatable = $netAccount('4020', 'credit_minus_debit');  // Sales (VATable)
+        $revenue        = $revenueSales + $revenueVatable;
+        $cogs      = $netAccount('5010', 'debit_minus_credit')   // COGS VATable
+                   + $netAccount('5011', 'debit_minus_credit')   // COGS NonVATable
+                   + $netAccount('5060', 'debit_minus_credit');   // Cost of Sales
         $netIncome = $revenue - $cogs;
 
         // Adjust for non-cash operating items
@@ -334,6 +579,117 @@ class AccountingController extends Controller
             'payment_breakdown' => $paymentBreakdown,
             'total_collected'   => (float) $totalCollected,
         ]);
+    }
+
+    // ── PDF REPORT ENDPOINTS ──
+
+    public function incomeStatementPdf(Request $request): Response
+    {
+        $request->validate([
+            'start_date' => 'required|date',
+            'end_date'   => 'required|date|after_or_equal:start_date',
+        ]);
+
+        $data = $this->buildIncomeStatement($request->start_date, $request->end_date);
+
+        $pdf = Pdf::loadView('reports.income-statement', $data);
+        $pdf->setPaper('A4', 'portrait');
+
+        $filename = "income-statement-{$request->start_date}-to-{$request->end_date}.pdf";
+
+        return $pdf->download($filename);
+    }
+
+    public function balanceSheetPdf(Request $request): Response
+    {
+        $request->validate([
+            'as_of_date' => 'required|date',
+        ]);
+
+        $data = $this->buildBalanceSheet($request->as_of_date);
+
+        $pdf = Pdf::loadView('reports.balance-sheet', $data);
+        $pdf->setPaper('A4', 'portrait');
+
+        $filename = "balance-sheet-as-of-{$request->as_of_date}.pdf";
+
+        return $pdf->download($filename);
+    }
+
+    /**
+     * Generate income statement PDF from user-submitted (possibly edited) data.
+     */
+    public function incomeStatementPdfFromData(Request $request): Response
+    {
+        $data = $request->validate([
+            'period'                          => 'required|array',
+            'period.start'                    => 'required|date',
+            'period.end'                      => 'required|date',
+            'income'                          => 'present|array|max:100',
+            'income.*.name'                   => 'required|string|max:255',
+            'income.*.amount'                 => 'required|numeric',
+            'total_income'                    => 'required|numeric',
+            'cost_of_sales'                   => 'present|array|max:100',
+            'cost_of_sales.*.name'            => 'required|string|max:255',
+            'cost_of_sales.*.amount'          => 'required|numeric',
+            'total_cost_of_sales'             => 'required|numeric',
+            'gross_profit'                    => 'required|numeric',
+            'other_expense_accounts'          => 'present|array|max:100',
+            'other_expense_accounts.*.name'   => 'required|string|max:255',
+            'other_expense_accounts.*.amount' => 'required|numeric',
+            'total_other_expenses'            => 'required|numeric',
+            'net_income'                      => 'required|numeric',
+        ]);
+
+        $pdf = Pdf::loadView('reports.income-statement', $data);
+        $pdf->setPaper('A4', 'portrait');
+
+        $filename = "income-statement-{$data['period']['start']}-to-{$data['period']['end']}.pdf";
+
+        return $pdf->download($filename);
+    }
+
+    /**
+     * Generate balance sheet PDF from user-submitted (possibly edited) data.
+     */
+    public function balanceSheetPdfFromData(Request $request): Response
+    {
+        $data = $request->validate([
+            'as_of_date'                            => 'required|date',
+            'accounts_receivable'                   => 'present|array|max:50',
+            'accounts_receivable.*.name'            => 'required|string|max:255',
+            'accounts_receivable.*.balance'         => 'required|numeric',
+            'total_accounts_receivable'             => 'required|numeric',
+            'other_current_assets'                  => 'present|array|max:50',
+            'other_current_assets.*.name'           => 'required|string|max:255',
+            'other_current_assets.*.balance'        => 'required|numeric',
+            'total_current_assets'                  => 'required|numeric',
+            'fixed_assets'                          => 'present|array|max:50',
+            'fixed_assets.*.name'                   => 'required|string|max:255',
+            'fixed_assets.*.balance'                => 'required|numeric',
+            'total_fixed_assets'                    => 'required|numeric',
+            'total_assets'                          => 'required|numeric',
+            'current_liabilities'                   => 'present|array|max:50',
+            'current_liabilities.*.name'            => 'required|string|max:255',
+            'current_liabilities.*.balance'         => 'required|numeric',
+            'total_current_liabilities'             => 'required|numeric',
+            'non_current_liabilities'               => 'present|array|max:50',
+            'non_current_liabilities.*.name'        => 'required|string|max:255',
+            'non_current_liabilities.*.balance'     => 'required|numeric',
+            'total_non_current_liabilities'         => 'required|numeric',
+            'total_liabilities'                     => 'required|numeric',
+            'equity_accounts'                       => 'present|array|max:50',
+            'equity_accounts.*.name'                => 'required|string|max:255',
+            'equity_accounts.*.balance'             => 'required|numeric',
+            'net_income'                            => 'required|numeric',
+            'total_equity'                          => 'required|numeric',
+            'total_liabilities_equity'              => 'required|numeric',
+        ]);
+
+        $pdf = Pdf::loadView('reports.balance-sheet', $data);
+        $pdf->setPaper('A4', 'portrait');
+
+        return $pdf->download("balance-sheet-as-of-{$data['as_of_date']}.pdf");
     }
 
     public function clientStatement(Request $request): JsonResponse

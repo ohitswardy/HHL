@@ -20,6 +20,8 @@ import { IncomeStatementPage } from './modules/accounting/pages/IncomeStatementP
 import { BalanceSheetPage } from './modules/accounting/pages/BalanceSheetPage';
 import { CashFlowPage } from './modules/accounting/pages/CashFlowPage';
 import { ClientStatementsPage } from './modules/accounting/pages/ClientStatementsPage';
+import { ExpensesPage } from './modules/accounting/pages/ExpensesPage';
+import { ChartOfAccountsPage } from './modules/accounting/pages/ChartOfAccountsPage';
 import { UsersPage } from './modules/users/pages/UsersPage';
 import { RoleManagementPage } from './modules/roles/pages/RoleManagementPage';
 import { useEffect } from 'react';
@@ -62,10 +64,12 @@ function App() {
           {/* Accounting */}
           <Route path="/accounting" element={<ProtectedRoute permission="accounting.view"><AccountingDashboard /></ProtectedRoute>} />
           <Route path="/accounting/journal" element={<ProtectedRoute permission="accounting.view"><JournalEntriesPage /></ProtectedRoute>} />
+          <Route path="/accounting/expenses" element={<ProtectedRoute permission="accounting.view"><ExpensesPage /></ProtectedRoute>} />
           <Route path="/accounting/reports/income" element={<ProtectedRoute permission="accounting.view"><IncomeStatementPage /></ProtectedRoute>} />
           <Route path="/accounting/reports/balance-sheet" element={<ProtectedRoute permission="accounting.view"><BalanceSheetPage /></ProtectedRoute>} />
           <Route path="/accounting/reports/cash-flow" element={<ProtectedRoute permission="accounting.view"><CashFlowPage /></ProtectedRoute>} />
           <Route path="/accounting/reports/client-statements" element={<ProtectedRoute permission="accounting.view"><ClientStatementsPage /></ProtectedRoute>} />
+          <Route path="/accounting/chart-of-accounts" element={<ProtectedRoute permission="accounting.view"><ChartOfAccountsPage /></ProtectedRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

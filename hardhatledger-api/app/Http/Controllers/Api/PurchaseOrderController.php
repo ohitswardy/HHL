@@ -8,6 +8,7 @@ use App\Http\Requests\PurchaseOrder\StorePurchaseOrderRequest;
 use App\Http\Resources\PurchaseOrderResource;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Services\ExpenseService;
 use App\Services\InventoryService;
 use App\Services\JournalService;
 use App\Services\TransactionNumberService;
@@ -21,6 +22,7 @@ class PurchaseOrderController extends Controller
         private TransactionNumberService $transactionNumberService,
         private InventoryService $inventoryService,
         private JournalService $journalService,
+        private ExpenseService $expenseService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -126,6 +128,13 @@ class PurchaseOrderController extends Controller
                 $this->journalService->postPurchaseEntry($purchaseOrder);
             }
         });
+
+        // After transaction: auto-create a draft expense when fully received
+        $purchaseOrder->refresh();
+        if ($purchaseOrder->status === 'received') {
+            $purchaseOrder->loadMissing('supplier');
+            $this->expenseService->createFromPurchaseOrder($purchaseOrder);
+        }
 
         $purchaseOrder->load(['supplier', 'user', 'items.product']);
         return response()->json(['data' => new PurchaseOrderResource($purchaseOrder)]);

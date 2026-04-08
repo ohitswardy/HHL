@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\ClientTierController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\PosController;
 use App\Http\Controllers\Api\ProductController;
@@ -139,12 +140,36 @@ Route::prefix('v1')->group(function () {
         // Accounting
         Route::prefix('accounting')->middleware('permission:accounting.view')->group(function () {
             Route::get('/chart-of-accounts', [AccountingController::class, 'chartOfAccounts']);
+            Route::get('/chart-of-accounts/flat', [AccountingController::class, 'chartOfAccountsFlat']);
+            Route::get('/chart-of-accounts/pdf', [AccountingController::class, 'chartOfAccountsPdf']);
+            Route::post('/chart-of-accounts', [AccountingController::class, 'storeAccount']);
+            Route::put('/chart-of-accounts/{id}', [AccountingController::class, 'updateAccount']);
+            Route::delete('/chart-of-accounts/{id}', [AccountingController::class, 'destroyAccount']);
             Route::get('/journal-entries', [AccountingController::class, 'journalEntries']);
             Route::get('/reports/income-statement', [AccountingController::class, 'incomeStatement']);
+            Route::get('/reports/income-statement/pdf', [AccountingController::class, 'incomeStatementPdf']);
+            Route::post('/reports/income-statement/pdf', [AccountingController::class, 'incomeStatementPdfFromData']);
             Route::get('/reports/balance-sheet', [AccountingController::class, 'balanceSheet']);
+            Route::get('/reports/balance-sheet/pdf', [AccountingController::class, 'balanceSheetPdf']);
+            Route::post('/reports/balance-sheet/pdf', [AccountingController::class, 'balanceSheetPdfFromData']);
             Route::get('/reports/cash-flow', [AccountingController::class, 'cashFlow']);
             Route::get('/reports/client-statement', [AccountingController::class, 'clientStatement']);
             Route::get('/reports/client-statement/pdf', [AccountingController::class, 'clientStatementPdf']);
+        });
+
+        // Expenses
+        Route::prefix('expenses')->middleware('permission:accounting.view')->group(function () {
+            Route::get('/', [ExpenseController::class, 'index']);
+            Route::get('/categories', [ExpenseController::class, 'categories']);
+            Route::get('/summary', [ExpenseController::class, 'summary']);
+            Route::post('/sync-from-pos', [ExpenseController::class, 'syncFromPos']); // must be before /{expense}
+            Route::get('/export/pdf', [ExpenseController::class, 'exportPdf']);
+            Route::get('/export/csv', [ExpenseController::class, 'exportCsv']);
+            Route::get('/{expense}', [ExpenseController::class, 'show']);
+            Route::post('/', [ExpenseController::class, 'store']);
+            Route::put('/{expense}', [ExpenseController::class, 'update']);
+            Route::post('/{expense}/confirm', [ExpenseController::class, 'confirm']);
+            Route::post('/{expense}/void', [ExpenseController::class, 'void']);
         });
     });
 });

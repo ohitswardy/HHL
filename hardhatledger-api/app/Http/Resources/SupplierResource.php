@@ -18,6 +18,7 @@ class SupplierResource extends JsonResource
             'address' => $this->address,
             'payment_terms' => $this->payment_terms,
             'notes' => $this->notes,
+            'is_vatable' => (bool) $this->is_vatable,
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

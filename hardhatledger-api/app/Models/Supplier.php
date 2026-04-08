@@ -18,7 +18,12 @@ class Supplier extends Model
         'address',
         'payment_terms',
         'notes',
+        'is_vatable',
         'branch_id',
+    ];
+
+    protected $casts = [
+        'is_vatable' => 'boolean',
     ];
 
     public function products()
