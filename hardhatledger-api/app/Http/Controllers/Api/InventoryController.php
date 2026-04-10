@@ -122,6 +122,7 @@ class InventoryController extends Controller
         ]);
 
         $pdf->setPaper('A4', 'landscape');
+        $pdf->setOptions(['enable_php' => true]);
 
         $filename = 'inventory-movements'
             . ($from ? '-'.$from : '')

@@ -110,7 +110,7 @@ class AccountingController extends Controller
         $pdf = Pdf::loadView('reports.chart-of-accounts', [
             'accounts' => $accounts,
             'generated_at' => now()->format('n/j/Y'),
-        ]);
+        ])->setOptions(['enable_php' => true]);
 
         return $pdf->download('chart-of-accounts.pdf');
     }
@@ -594,6 +594,7 @@ class AccountingController extends Controller
 
         $pdf = Pdf::loadView('reports.income-statement', $data);
         $pdf->setPaper('A4', 'portrait');
+        $pdf->setOptions(['enable_php' => true]);
 
         $filename = "income-statement-{$request->start_date}-to-{$request->end_date}.pdf";
 
@@ -610,6 +611,7 @@ class AccountingController extends Controller
 
         $pdf = Pdf::loadView('reports.balance-sheet', $data);
         $pdf->setPaper('A4', 'portrait');
+        $pdf->setOptions(['enable_php' => true]);
 
         $filename = "balance-sheet-as-of-{$request->as_of_date}.pdf";
 
@@ -643,6 +645,7 @@ class AccountingController extends Controller
 
         $pdf = Pdf::loadView('reports.income-statement', $data);
         $pdf->setPaper('A4', 'portrait');
+        $pdf->setOptions(['enable_php' => true]);
 
         $filename = "income-statement-{$data['period']['start']}-to-{$data['period']['end']}.pdf";
 
@@ -688,6 +691,7 @@ class AccountingController extends Controller
 
         $pdf = Pdf::loadView('reports.balance-sheet', $data);
         $pdf->setPaper('A4', 'portrait');
+        $pdf->setOptions(['enable_php' => true]);
 
         return $pdf->download("balance-sheet-as-of-{$data['as_of_date']}.pdf");
     }
@@ -777,6 +781,7 @@ class AccountingController extends Controller
         ]);
 
         $pdf->setPaper('A4', 'portrait');
+        $pdf->setOptions(['enable_php' => true]);
 
         $slug     = preg_replace('/[^a-z0-9]+/i', '-', strtolower($client->business_name));
         $filename = "statement-{$slug}-{$start}-to-{$end}.pdf";

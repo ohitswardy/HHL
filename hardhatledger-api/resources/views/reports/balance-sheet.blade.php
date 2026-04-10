@@ -1,16 +1,22 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+@extends('layouts.pdf')
+
+@section('title', 'Balance Sheet — HardhatLedger')
+
+@section('doc-title', 'Balance Sheet')
+
+@section('doc-meta')
+As of {{ \Carbon\Carbon::parse($as_of_date)->format('F d, Y') }}
+@endsection
+
+@section('extra-styles')
+<style>
         body {
             font-family: 'DejaVu Sans', sans-serif;
             font-size: 11px;
             color: #222;
             background: #fff;
         }
-        .page { padding: 40px 52px; }
+        .page { padding: 6px 8px; }
 
         /* ── Header ── */
         .report-title {
@@ -152,16 +158,11 @@
         /* Negative formatting */
         .negative { color: #c0392b; }
 
-        /* ── Footer ── */
-        .report-footer {
-            margin-top: 36px;
-            font-size: 8.5px;
-            color: #999;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
+        .negative { color: #c0392b; }
+</style>
+@endsection
+
+@section('content')
 <div class="page">
 
     <div class="report-title">Balance Sheet</div>
@@ -335,10 +336,5 @@
 
     </table>
 
-    <div class="report-footer">
-        Accrual Basis &nbsp; {{ now()->format('l, d F Y h:i A') }} GMTZ
-    </div>
-
 </div>
-</body>
-</html>
+@endsection

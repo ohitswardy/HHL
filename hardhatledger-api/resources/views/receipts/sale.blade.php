@@ -131,7 +131,8 @@
 
     <div class="footer center">
         <p>Thank you for your purchase!</p>
-        <p>HardhatLedger &copy; {{ date('Y') }}</p>
+        <p style="margin-top:4px; font-size:8px; color:#888;">{{ $sale->created_at->setTimezone('Asia/Manila')->format('M d, Y h:i A') }} PST</p>
+        <p style="margin-top:2px; font-size:8px; color:#888;">HardhatLedger 2026 &mdash; All rights reserved for CW Devs</p>
     </div>
 </body>
 </html>

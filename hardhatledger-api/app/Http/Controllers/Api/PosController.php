@@ -717,6 +717,7 @@ class PosController extends Controller
             'fulfillmentLabel' => $fulfillmentLabel,
             'paymentLabel'     => $paymentLabel,
         ]);
+        $pdf->setOptions(['enable_php' => true]);
 
         return $pdf->download($filename);
     }

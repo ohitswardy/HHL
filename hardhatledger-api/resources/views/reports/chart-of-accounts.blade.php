@@ -1,38 +1,21 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+@extends('layouts.pdf')
+
+@section('title', 'Chart of Accounts — HardhatLedger')
+
+@section('doc-title', 'Chart of Accounts')
+
+@section('doc-meta')
+Generated on: {{ $generated_at }}
+@endsection
+
+@section('extra-styles')
+<style>
         body {
             font-family: 'DejaVu Sans', sans-serif;
             font-size: 11px;
             color: #222;
-            background: #fff;
         }
-        .page { padding: 40px 52px; }
-
-        .company-name {
-            font-size: 16px;
-            font-weight: 700;
-            text-align: center;
-            color: #222;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .report-title {
-            font-size: 13px;
-            font-weight: 400;
-            text-align: center;
-            color: #222;
-            margin-bottom: 4px;
-        }
-        .report-date {
-            font-size: 10px;
-            text-align: center;
-            color: #555;
-            margin-bottom: 24px;
-        }
+        .page { padding: 6px 0; }
 
         .report-table {
             width: 100%;
@@ -65,13 +48,11 @@
             padding-top: 10px;
             border-bottom: 1px solid #ccc;
         }
-    </style>
-</head>
-<body>
+</style>
+@endsection
+
+@section('content')
 <div class="page">
-    <div class="company-name">TRI-MILLENNIUM HARDWARE TRADING</div>
-    <div class="report-title">Chart of Accounts</div>
-    <div class="report-date">Generated on: {{ $generated_at }}</div>
 
     <table class="report-table">
         <thead>
@@ -111,5 +92,4 @@
         </tbody>
     </table>
 </div>
-</body>
-</html>
+@endsection

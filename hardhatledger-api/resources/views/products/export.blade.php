@@ -1,14 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
+@extends('layouts.pdf')
+
+@section('title', 'Product List — HardhatLedger')
+
+@section('doc-title', 'Product List')
+
+@section('doc-meta')
+{{ $date }} &nbsp;&middot;&nbsp; {{ $products->count() }} product(s)
+@endsection
+
+@section('extra-styles')
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9px; color: #1a1a1a; }
 
-  .header { background: #1B3A5C; color: #fff; padding: 12px 16px; margin-bottom: 14px; }
-  .header h1 { font-size: 16px; font-weight: bold; letter-spacing: 0.5px; }
-  .header .meta { font-size: 8px; opacity: 0.8; margin-top: 3px; }
+  .summary { margin-bottom: 10px; font-size: 8px; color: #475569; }
+  .summary span { font-weight: bold; color: #1B3A5C; }
 
   table { width: 100%; border-collapse: collapse; }
   thead th {
@@ -32,18 +37,10 @@
 
   .stock-low { color: #dc2626; font-weight: bold; }
   .stock-ok  { color: #16a34a; font-weight: bold; }
-
-  .footer { margin-top: 14px; border-top: 1px solid #cbd5e1; padding-top: 6px; display: flex; justify-content: space-between; color: #64748b; font-size: 7.5px; }
-  .summary { margin-bottom: 10px; font-size: 8px; color: #475569; }
-  .summary span { font-weight: bold; color: #1B3A5C; }
 </style>
-</head>
-<body>
+@endsection
 
-<div class="header">
-  <h1>HardhatLedger — Product List</h1>
-  <div class="meta">Generated: {{ $date }} &nbsp;|&nbsp; Total products: {{ $products->count() }}</div>
-</div>
+@section('content')
 
 <div class="summary">
   Active: <span>{{ $products->where('is_active', true)->count() }}</span>
@@ -60,8 +57,8 @@
       <th style="width:26%">Product Name</th>
       <th style="width:14%">Category</th>
       <th style="width:5%" class="center">Unit</th>
-      <th style="width:10%" class="right">Cost (₱)</th>
-      <th style="width:10%" class="right">Selling (₱)</th>
+      <th style="width:10%" class="right">Cost (&#8369;)</th>
+      <th style="width:10%" class="right">Selling (&#8369;)</th>
       <th style="width:8%" class="center">Stock</th>
       <th style="width:6%" class="center">Reorder</th>
       <th style="width:7%" class="center">Status</th>
@@ -94,10 +91,4 @@
   </tbody>
 </table>
 
-<div class="footer">
-  <span>HardhatLedger — Confidential</span>
-  <span>{{ $date }}</span>
-</div>
-
-</body>
-</html>
+@endsection

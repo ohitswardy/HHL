@@ -26,7 +26,7 @@ interface StatementSummary {
 export function ClientStatementsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [clientId, setClientId] = useState('');
-  const [startDate, setStartDate] = useState(dayjs().startOf('month').format('YYYY-MM-DD'));
+  const [startDate, setStartDate] = useState(dayjs().startOf('year').format('YYYY-MM-DD'));
   const [endDate, setEndDate] = useState(dayjs().format('YYYY-MM-DD'));
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('');
@@ -66,7 +66,9 @@ export function ClientStatementsPage() {
   useEffect(() => {
     if (!clientId) return;
     setLoadingTx(true);
-    const params: Record<string, unknown> = { client_id: clientId, from: startDate, to: endDate, page, per_page: 20 };
+    const params: Record<string, unknown> = { client_id: clientId, page, per_page: 20 };
+    if (startDate) params.from = startDate;
+    if (endDate) params.to = endDate;
     if (statusFilter) params.status = statusFilter;
     if (paymentMethodFilter) params.payment_method = paymentMethodFilter;
     if (searchTx.trim()) params.search = searchTx.trim();
@@ -82,7 +84,7 @@ export function ClientStatementsPage() {
   useEffect(() => {
     if (!clientId) return;
     setLoadingSummary(true);
-    api.get('/accounting/reports/client-statement', { params: { client_id: clientId, start_date: startDate, end_date: endDate } })
+    api.get('/accounting/reports/client-statement', { params: { client_id: clientId, start_date: startDate || '2000-01-01', end_date: endDate || dayjs().format('YYYY-MM-DD') } })
       .then((res) => setSummary(res.data))
       .catch(() => toast.error('Failed to load statement summary'))
       .finally(() => setLoadingSummary(false));
@@ -136,10 +138,12 @@ export function ClientStatementsPage() {
     setExportOpen(false);
     setExporting(true);
     try {
+      const effectiveStart = startDate || '2000-01-01';
+      const effectiveEnd = endDate || dayjs().format('YYYY-MM-DD');
       const params: Record<string, unknown> = {
         client_id: clientId,
-        start_date: startDate,
-        end_date: endDate,
+        start_date: effectiveStart,
+        end_date: effectiveEnd,
       };
       if (statusFilter) params.status = statusFilter;
       const res = await api.get('/accounting/reports/client-statement/pdf', {
@@ -149,7 +153,7 @@ export function ClientStatementsPage() {
       const slug = (selectedClient?.business_name ?? clientId).replace(/\s+/g, '-');
       downloadBlob(
         new Blob([res.data], { type: 'application/pdf' }),
-        `${slug}-${startDate}-to-${endDate}.pdf`
+        `${slug}-${effectiveStart}-to-${effectiveEnd}.pdf`
       );
       toast.success('Filtered transactions exported as PDF');
     } catch {
@@ -228,8 +232,8 @@ export function ClientStatementsPage() {
               placeholder="Select a client..."
             />
           </div>
-          <DatePicker label="From" value={startDate} onChange={(e) => changeStartDate(e.target.value)} />
-          <DatePicker label="To" value={endDate} onChange={(e) => changeEndDate(e.target.value)} />
+          <DatePicker label="From" value={startDate} onChange={(e) => changeStartDate(e.target.value)} placeholder="All time" />
+          <DatePicker label="To" value={endDate} onChange={(e) => changeEndDate(e.target.value)} placeholder="Today" />
         </div>
       </Card>
 
@@ -267,7 +271,13 @@ export function ClientStatementsPage() {
                   <div className="text-right">
                     <p className="text-xs" style={{ color: 'var(--n-text-secondary)' }}>Statement Period</p>
                     <p className="font-semibold text-sm">
-                      {dayjs(summary.period.start).format('MMM D')} – {dayjs(summary.period.end).format('MMM D, YYYY')}
+                      {startDate && endDate
+                        ? `${dayjs(startDate).format('MMM D')} – ${dayjs(endDate).format('MMM D, YYYY')}`
+                        : startDate
+                        ? `${dayjs(startDate).format('MMM D, YYYY')} – Present`
+                        : endDate
+                        ? `All Time – ${dayjs(endDate).format('MMM D, YYYY')}`
+                        : 'All Time'}
                     </p>
                   </div>
                 </div>

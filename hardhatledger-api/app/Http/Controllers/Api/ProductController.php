@@ -184,6 +184,7 @@ class ProductController extends Controller
             'date'     => now()->format('F d, Y'),
         ]);
         $pdf->setPaper('a4', 'landscape');
+        $pdf->setOptions(['enable_php' => true]);
 
         return $pdf->download('products-' . now()->format('Y-m-d') . '.pdf');
     }

@@ -1,16 +1,22 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+@extends('layouts.pdf')
+
+@section('title', 'Profit and Loss — HardhatLedger')
+
+@section('doc-title', 'Profit and Loss')
+
+@section('doc-meta')
+{{ \Carbon\Carbon::parse($period['start'])->format('M d') }}&ndash;{{ \Carbon\Carbon::parse($period['end'])->format('M d, Y') }}
+@endsection
+
+@section('extra-styles')
+<style>
         body {
             font-family: 'DejaVu Sans', sans-serif;
             font-size: 11px;
             color: #222;
             background: #fff;
         }
-        .page { padding: 40px 52px; }
+        .page { padding: 6px 8px; }
 
         /* ── Header ── */
         .report-title {
@@ -127,18 +133,11 @@
         /* Spacer */
         .spacer td { height: 6px; }
 
-        /* ── Footer ── */
-        .report-footer {
-            margin-top: 36px;
-            font-size: 8.5px;
-            color: #999;
-            text-align: center;
-        }
-
         .negative { color: #c0392b; }
-    </style>
-</head>
-<body>
+</style>
+@endsection
+
+@section('content')
 <div class="page">
 
     <div class="report-title">Profit and Loss</div>
@@ -237,10 +236,5 @@
 
     </table>
 
-    <div class="report-footer">
-        Accrual Basis &nbsp; {{ now()->format('l, d F Y h:i A') }} GMTZ
-    </div>
-
 </div>
-</body>
-</html>
+@endsection

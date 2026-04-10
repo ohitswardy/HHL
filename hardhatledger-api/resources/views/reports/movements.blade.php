@@ -1,18 +1,21 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9px; color: #1a1a1a; }
+@extends('layouts.pdf')
 
-  .header { background: #1B3A5C; color: #fff; padding: 12px 16px; margin-bottom: 14px; }
-  .header h1 { font-size: 16px; font-weight: bold; letter-spacing: 0.5px; }
-  .header .meta { font-size: 8px; opacity: 0.8; margin-top: 3px; }
+@section('title', 'Inventory Movements — HardhatLedger')
+
+@section('doc-title', 'Inventory Movements')
+
+@section('doc-meta')
+{{ $from ? date('M d, Y', strtotime($from)) : 'All time' }}@if($to) — {{ date('M d, Y', strtotime($to)) }}@endif
+@if($type) &middot; {{ strtoupper($type) }}@endif
+@endsection
+
+@section('extra-styles')
+<style>
+  body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9px; color: #1a1a1a; }
 
   .summary-bar {
     display: flex; gap: 20px; margin-bottom: 12px;
-    background: #f4f6f9; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 12px;
+    background: #f4f6f9; border: 1px solid #e2e8f0; padding: 8px 12px;
   }
   .summary-bar .stat { font-size: 8px; color: #475569; }
   .summary-bar .stat strong { display: block; font-size: 13px; font-weight: bold; color: #1B3A5C; }
@@ -46,22 +49,10 @@
   .qty-in  { color: #16a34a; font-weight: bold; }
   .qty-out { color: #dc2626; font-weight: bold; }
   .qty-adj { color: #2563eb; font-weight: bold; }
-
-  .footer { margin-top: 14px; border-top: 1px solid #cbd5e1; padding-top: 6px; display:flex; justify-content:space-between; color:#64748b; font-size:7.5px; }
 </style>
-</head>
-<body>
+@endsection
 
-<div class="header">
-  <h1>HardhatLedger — Inventory Movements</h1>
-  <div class="meta">
-    Period: {{ $from ? date('M d, Y', strtotime($from)) : 'All time' }}
-    @if($to) — {{ date('M d, Y', strtotime($to)) }} @endif
-    @if($type) &nbsp;|&nbsp; Type: {{ strtoupper($type) }} @endif
-    &nbsp;|&nbsp; Generated: {{ now()->format('M d, Y g:i A') }}
-    &nbsp;|&nbsp; Total records: {{ $movements->count() }}
-  </div>
-</div>
+@section('content')
 
 {{-- Summary stats --}}
 @php
@@ -139,10 +130,4 @@
   </tbody>
 </table>
 
-<div class="footer">
-  <span>HardhatLedger — Inventory Movements Report</span>
-  <span>{{ now()->format('M d, Y g:i A') }}</span>
-</div>
-
-</body>
-</html>
+@endsection

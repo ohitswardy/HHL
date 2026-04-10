@@ -1,29 +1,21 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
+@extends('layouts.pdf')
+
+@section('title', 'Transaction Report — HardhatLedger')
+
+@section('doc-title', 'Transaction Report')
+
+@section('doc-meta')
+{{ $label }}
+@if($statusLabel !== 'All') &middot; {{ $statusLabel }} @endif
+@if($fulfillmentLabel !== 'All') &middot; {{ $fulfillmentLabel }} @endif
+@endsection
+
+@section('extra-styles')
+<style>
         body {
             font-family: Arial, sans-serif;
             font-size: 12px;
-            margin: 20px;
             color: #333;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #1B3A5C;
-            padding-bottom: 15px;
-        }
-        .header h1 {
-            font-size: 24px;
-            margin: 0;
-            color: #1B3A5C;
-        }
-        .header p {
-            margin: 5px 0;
-            font-size: 11px;
-            color: #666;
         }
         .period-info {
             text-align: right;
@@ -64,7 +56,6 @@
         .summary {
             background-color: #f0f0f0;
             padding: 15px;
-            border-radius: 4px;
             margin-top: 20px;
             font-weight: bold;
         }
@@ -84,30 +75,15 @@
             font-size: 14px;
             color: #1B3A5C;
         }
-        .page-break {
-            page-break-after: always;
-        }
-        .footer {
-            margin-top: 30px;
-            text-align: center;
-            font-size: 10px;
-            color: #999;
-            border-top: 1px solid #ddd;
-            padding-top: 10px;
-        }
         .voided-row td {
             text-decoration: line-through;
-            color: #aaa !important;
-            background-color: #fafafa !important;
+            color: #aaa;
+            background-color: #fafafa;
         }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>HARDHATLEDGER</h1>
-        <p>Construction Materials Supplier</p>
-        <p>Transaction Report</p>
-    </div>
+</style>
+@endsection
+
+@section('content')
 
     <div class="period-info">
         <strong>Period:</strong> {{ $label }}
@@ -179,9 +155,4 @@
         </div>
     </div>
 
-    <div class="footer">
-        <p>This is an automatically generated report from HardhatLedger</p>
-        <p>HardhatLedger &copy; {{ date('Y') }} - All Rights Reserved</p>
-    </div>
-</body>
-</html>
+@endsection

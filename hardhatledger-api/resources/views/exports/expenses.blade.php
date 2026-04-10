@@ -1,65 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Expense Report — HardhatLedger</title>
-<style>
-    /* ── Reset ── */
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+@extends('layouts.pdf')
 
-    /* ── Page Setup ── */
-    @page { margin: 68px 30px 52px 30px; }
+@section('title', 'Expense Report — HardhatLedger')
+@section('doc-title', 'Expense Report')
+@section('doc-meta')Generated: {{ $generatedAt->format('F d, Y  h:i A') }}@endsection
 
-    body {
-        font-family: 'DejaVu Sans', sans-serif;
-        font-size: 8.5pt;
-        color: #2d3748;
-        background: #fff;
-        line-height: 1.35;
-    }
-
-    /* ── Fixed Page Header ── */
-    .page-header {
-        position: fixed;
-        top: -58px;
-        left: -30px;
-        right: -30px;
-        height: 54px;
-        background: #1B3A5C;
-        padding: 0 30px;
-    }
-    .page-header table { width: 100%; height: 54px; border-collapse: collapse; }
-    .page-header td { vertical-align: middle; }
-    .brand-name  { font-size: 13pt; font-weight: bold; color: #fff; letter-spacing: 0.5px; }
-    .brand-sub   { font-size: 7.5pt; color: #F5A623; margin-top: 2px; }
-    .header-right { text-align: right; }
-    .report-title { font-size: 10pt; font-weight: bold; color: #fff; }
-    .report-date  { font-size: 7pt; color: rgba(255,255,255,0.6); margin-top: 3px; }
-
-    /* ── Amber accent bar under header ── */
-    .accent-bar {
-        position: fixed;
-        top: -4px;
-        left: -30px;
-        right: -30px;
-        height: 4px;
-        background: #F5A623;
-    }
-
-    /* ── Fixed Page Footer ── */
-    .page-footer {
-        position: fixed;
-        bottom: -42px;
-        left: -30px;
-        right: -30px;
-        height: 38px;
-        border-top: 1px solid #cbd5e0;
-        padding: 0 30px;
-    }
-    .page-footer table { width: 100%; height: 38px; border-collapse: collapse; }
-    .page-footer td { vertical-align: middle; font-size: 7pt; color: #a0aec0; }
-    .footer-right { text-align: right; }
-
+@section('extra-css')
     /* ── Report Heading Row ── */
     .report-heading {
         border-bottom: 2px solid #1B3A5C;
@@ -175,48 +120,9 @@
     .src-manual { font-size: 7pt; color: #a0aec0; }
 
     .empty-msg { text-align: center; color: #a0aec0; padding: 30px; font-size: 9pt; }
-</style>
-</head>
-<body>
+@endsection
 
-{{-- ── Page Header (fixed, appears on every page) ── --}}
-<div class="page-header">
-    <table>
-        <tr>
-            <td>
-                <div class="brand-name">HARDHATLEDGER</div>
-                <div class="brand-sub">Construction Materials Supplier</div>
-            </td>
-            <td class="header-right">
-                <div class="report-title">Expense Report</div>
-                <div class="report-date">Generated: {{ $generatedAt->format('F d, Y  h:i A') }}</div>
-            </td>
-        </tr>
-    </table>
-</div>
-<div class="accent-bar"></div>
-
-{{-- ── Page Footer (fixed, appears on every page) ── --}}
-<div class="page-footer">
-    <table>
-        <tr>
-            <td>HardhatLedger &bull; Expense Report &bull; Confidential</td>
-            <td class="footer-right">
-                <script type="text/php">
-                    if (isset($pdf)) {
-                        $w = $pdf->get_width();
-                        $h = $pdf->get_height();
-                        $pdf->page_text($w - 95, $h - 26, "Page {PAGE_NUM} of {PAGE_COUNT}", null, 7.5, [160, 174, 192]);
-                    }
-                </script>
-            </td>
-        </tr>
-    </table>
-</div>
-
-{{-- ════════════════════════════════════════════════════════════ --}}
-{{-- ── Main Content ── --}}
-{{-- ════════════════════════════════════════════════════════════ --}}
+@section('content')
 
 {{-- ── Report Heading ── --}}
 <div class="report-heading">
@@ -379,5 +285,4 @@
 </table>
 @endif
 
-</body>
-</html>
+@endsection
