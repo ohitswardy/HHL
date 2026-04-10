@@ -51,7 +51,6 @@ class JournalService
 
             $cashAccount      = $this->getAccountByCode('1010');
             $arAccount         = $this->getAccountByCode('1100');
-            $cogsAccount       = $this->getAccountByCode('5010');
             $inventoryAccount  = $this->getAccountByCode('1200');
 
             // Determine how much was paid in cash vs credit
@@ -119,6 +118,9 @@ class JournalService
             }
 
             // ── COGS recognition ──
+            // Route to the correct COGS account: VATable sales (wholesale/contractor) → 5010,
+            // Non-VAT retail sales → 5011. $isVatable is already resolved above.
+            $cogsAccount = $this->getAccountByCode($isVatable ? '5010' : '5011');
             $cogs = 0;
             $sale->load('items.product');
             foreach ($sale->items as $item) {

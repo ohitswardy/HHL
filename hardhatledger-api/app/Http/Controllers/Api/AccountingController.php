@@ -315,8 +315,8 @@ class AccountingController extends Controller
             // Net Earnings
             'net_income'             => $netIncome,
             // Backward-compatible aliases
-            'sales_vatable'          => $incomeAccounts->firstWhere('code', '4010')['amount'] ?? 0,
-            'sales_non_vat'          => $incomeAccounts->firstWhere('code', '4020')['amount'] ?? 0,
+            'sales_vatable'          => $incomeAccounts->firstWhere('code', '4020')['amount'] ?? 0,
+            'sales_non_vat'          => $incomeAccounts->firstWhere('code', '4010')['amount'] ?? 0,
             'cogs_non_vat'           => $cosAccounts->firstWhere('code', '5011')['amount'] ?? 0,
             'cogs_vatable'           => $cosAccounts->firstWhere('code', '5010')['amount'] ?? 0,
             'total_cogs'             => $totalCos,
@@ -404,16 +404,13 @@ class AccountingController extends Controller
         $equityAccounts      = $equity->filter(fn ($a) => abs($a['balance']) >= 0.01)->values();
         $totalEquityAccounts = (float) $equityAccounts->sum('balance');
 
-        // ── Net Income (Revenue − Expenses through as-of date) ──
-        $totalRevenue = (float) JournalLine::whereHas('account', fn ($q) => $q->where('type', 'revenue'))
-            ->whereHas('journalEntry', fn ($q) => $q->whereDate('date', '<=', $asOf))
-            ->sum(DB::raw('credit - debit'));
-
-        $totalExpenses = (float) JournalLine::whereHas('account', fn ($q) => $q->where('type', 'expense'))
-            ->whereHas('journalEntry', fn ($q) => $q->whereDate('date', '<=', $asOf))
-            ->sum(DB::raw('debit - credit'));
-
-        $netIncome   = $totalRevenue - $totalExpenses;
+        // ── Net Income (year-to-date, same methodology as Income Statement) ──
+        // Delegating to buildIncomeStatement() ensures the Balance Sheet equity section
+        // always shows a net income figure that is identical to what the P&L reports for
+        // the same fiscal year — both use the same journal + expense-fallback logic.
+        $yearStart   = substr($asOf, 0, 4) . '-01-01';
+        $incomeData  = $this->buildIncomeStatement($yearStart, $asOf);
+        $netIncome   = $incomeData['net_income'];
         $totalEquity = $totalEquityAccounts + $netIncome;
 
         return [
@@ -708,14 +705,22 @@ class AccountingController extends Controller
         $start = $request->start_date;
         $end = $request->end_date;
 
-        $transactions = SalesTransaction::where('client_id', $client->id)
+        $txQuery = SalesTransaction::where('client_id', $client->id)
             ->whereBetween('created_at', [$start, $end . ' 23:59:59'])
-            ->where('status', '!=', 'voided')
             ->with('payments')
-            ->orderBy('created_at')
-            ->get();
+            ->orderBy('created_at');
 
-        $totalCharges = $transactions->sum('total_amount');
+        // Optional status filter (mirrors the PDF endpoint's behaviour)
+        if ($request->filled('status')) {
+            $txQuery->where('status', $request->status);
+        }
+
+        $transactions = $txQuery->get();
+
+        // Voided transactions are included in the collection so callers can display them
+        // with a visual indicator, but they are excluded from financial totals —
+        // matching exactly what the PDF statement already does.
+        $totalCharges = $transactions->where('status', '!=', 'voided')->sum('total_amount');
         $totalPayments = $transactions->flatMap->payments
             ->where('status', 'confirmed')
             ->sum('amount');
@@ -738,6 +743,7 @@ class AccountingController extends Controller
                 'total_amount' => (float) $t->total_amount,
                 'total_paid' => (float) $t->payments->where('status', 'confirmed')->sum('amount'),
                 'status' => $t->status,
+                'is_voided' => $t->status === 'voided',
             ]),
         ]);
     }
