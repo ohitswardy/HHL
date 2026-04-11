@@ -388,14 +388,15 @@ export function POSPage() {
                     setPaymentTermsData(null);
                   }
                 }}
+                searchThreshold={10}
                 options={[
                   { value: 'cash',          label: 'Cash' },
-                  { value: 'card',          label: 'Card' },
-                  { value: 'business_bank', label: 'Business Bank' },
-                  { value: 'bank_transfer', label: 'Bank Transfer' },
-                  { value: 'check',         label: 'Check' },
-                  { value: 'credit',        label: 'Credit' },
                   { value: 'payment_terms', label: 'Payment Terms' },
+                  { value: 'credit',        label: 'Credit' },
+                  { value: 'card',          label: 'Card' },
+                  { value: 'bank_transfer', label: 'Bank Transfer' },
+                  { value: 'business_bank', label: 'Business Bank' },
+                  { value: 'check',         label: 'Check' },
                 ]}
               />
               <Select value={cart.fulfillmentType} onChange={(e) => { cart.setFulfillmentType(e.target.value as 'delivery' | 'pickup'); if (e.target.value !== 'delivery') setDeliveryFee(''); }} options={[

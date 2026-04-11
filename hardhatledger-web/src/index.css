@@ -590,6 +590,15 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes neuDropUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.neu-select-panel.open-upward {
+  animation: neuDropUp 0.18s ease-out;
+}
+
 /* ── BADGE ────────────────────────────────────────────────────────────── */
 .neu-badge {
   display: inline-flex;

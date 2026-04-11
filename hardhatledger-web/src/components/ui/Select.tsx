@@ -41,6 +41,7 @@ export function Select({
   const [search, setSearch] = useState('');
   const [focusedIdx, setFocusedIdx] = useState(-1);
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
+  const [openUpward, setOpenUpward] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -58,13 +59,29 @@ export function Select({
   const computePanelStyle = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    setPanelStyle({
-      position: 'fixed',
-      top: rect.bottom + 6,
-      left: rect.left,
-      width: rect.width,
-      zIndex: 1100,
-    });
+    const PANEL_MAX_H = 274; // max-height 260px + borders + gap buffer
+    const GAP = 6;
+    const spaceBelow = window.innerHeight - rect.bottom - GAP;
+    const spaceAbove = rect.top - GAP;
+    const flyUp = spaceBelow < PANEL_MAX_H && spaceAbove > spaceBelow;
+    setOpenUpward(flyUp);
+    if (flyUp) {
+      setPanelStyle({
+        position: 'fixed',
+        bottom: window.innerHeight - rect.top + GAP,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 1100,
+      });
+    } else {
+      setPanelStyle({
+        position: 'fixed',
+        top: rect.bottom + GAP,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 1100,
+      });
+    }
   }, []);
 
   // Close on outside click — must also check portal panel clicks
@@ -185,7 +202,7 @@ export function Select({
       </div>
 
       {isOpen && createPortal(
-        <div className="neu-select-panel" role="listbox" id={listId} aria-label={label || 'Options'} style={panelStyle}>
+        <div className={`neu-select-panel${openUpward ? ' open-upward' : ''}`} role="listbox" id={listId} aria-label={label || 'Options'} style={panelStyle}>
           {showSearch && (
             <div className="neu-select-search">
               <input
