@@ -391,6 +391,7 @@ export function POSPage() {
                 options={[
                   { value: 'cash',          label: 'Cash' },
                   { value: 'card',          label: 'Card' },
+                  { value: 'business_bank', label: 'Business Bank' },
                   { value: 'bank_transfer', label: 'Bank Transfer' },
                   { value: 'check',         label: 'Check' },
                   { value: 'credit',        label: 'Credit' },

@@ -482,12 +482,13 @@ function CreatePOModal({
   const [supplierId, setSupplierId] = useState<number | ''>('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [items, setItems] = useState<DraftItem[]>([{ product_id: '', quantity_ordered: 1, unit_cost: 0 }]);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const reset = () => {
-    setSupplierId(''); setExpectedDate(''); setNotes('');
+    setSupplierId(''); setExpectedDate(''); setNotes(''); setPaymentMethod('cash');
     setItems([{ product_id: '', quantity_ordered: 1, unit_cost: 0 }]);
     setErrors({});
   };
@@ -534,6 +535,7 @@ function CreatePOModal({
         supplier_id: supplierId,
         expected_date: expectedDate || null,
         notes: notes || null,
+        payment_method: paymentMethod,
         items: items.filter((it) => it.product_id).map((it) => ({
           product_id: it.product_id,
           quantity_ordered: it.quantity_ordered,
@@ -555,7 +557,7 @@ function CreatePOModal({
     <Modal isOpen={isOpen} onClose={() => { reset(); onClose(); }} title="New Purchase Order" width="xl">
       <div className="space-y-5">
         {/* top fields */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Select
             label="Supplier *"
             value={supplierId}
@@ -568,6 +570,18 @@ function CreatePOModal({
             label="Expected Delivery"
             value={expectedDate}
             onChange={(e) => setExpectedDate(e.target.value)}
+          />
+          <Select
+            label="Payment Method"
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value)}
+            options={[
+              { value: 'cash', label: 'Cash' },
+              { value: 'card', label: 'Card' },
+              { value: 'bank_transfer', label: 'Bank Transfer' },
+              { value: 'check', label: 'Check' },
+              { value: 'business_bank', label: 'Business Bank' },
+            ]}
           />
           <Input
             label="Notes"

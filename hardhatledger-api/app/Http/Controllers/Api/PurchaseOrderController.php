@@ -66,6 +66,7 @@ class PurchaseOrderController extends Controller
                 'total_amount' => $totalAmount,
                 'expected_date' => $request->expected_date,
                 'notes' => $request->notes,
+                'payment_method' => $request->payment_method ?? 'cash',
             ]);
 
             foreach ($request->items as $item) {

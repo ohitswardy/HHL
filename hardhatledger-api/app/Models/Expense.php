@@ -21,6 +21,7 @@ class Expense extends Model
         'tax_amount',
         'total_amount',
         'notes',
+        'payment_method',
         'status',
         'source',
         'purchase_order_id',

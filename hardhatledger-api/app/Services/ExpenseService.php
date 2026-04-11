@@ -47,6 +47,7 @@ class ExpenseService
                 'tax_amount' => $data['tax_amount'] ?? 0,
                 'total_amount' => $data['total_amount'],
                 'notes' => $data['notes'] ?? null,
+                'payment_method' => $data['payment_method'] ?? 'cash',
                 'status' => 'recorded',
                 'user_id' => Auth::id(),
                 'branch_id' => $data['branch_id'] ?? 1,
@@ -176,7 +177,10 @@ class ExpenseService
         ]);
 
         $expenseAccount = ChartOfAccount::where('code', $accountCode)->firstOrFail();
-        $cashAccount = ChartOfAccount::where('code', '1010')->firstOrFail();
+
+        // Route to Cash in Bank (1020) for business_bank, Cash on Hand (1010) otherwise
+        $cashAccountCode = $expense->payment_method === 'business_bank' ? '1020' : '1010';
+        $cashAccount = ChartOfAccount::where('code', $cashAccountCode)->firstOrFail();
 
         // DR: Expense account for the subtotal
         $entry->lines()->create([

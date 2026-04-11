@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AccountingController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BankTransactionController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\ClientTierController;
@@ -155,6 +156,10 @@ Route::prefix('v1')->group(function () {
             Route::get('/reports/cash-flow', [AccountingController::class, 'cashFlow']);
             Route::get('/reports/client-statement', [AccountingController::class, 'clientStatement']);
             Route::get('/reports/client-statement/pdf', [AccountingController::class, 'clientStatementPdf']);
+
+            // Bank Transactions
+            Route::get('/bank-transactions', [BankTransactionController::class, 'index']);
+            Route::post('/bank-transactions/export/pdf', [BankTransactionController::class, 'exportPdf']);
         });
 
         // Expenses

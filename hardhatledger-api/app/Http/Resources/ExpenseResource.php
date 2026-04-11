@@ -27,6 +27,7 @@ class ExpenseResource extends JsonResource
             'tax_amount' => (float) $this->tax_amount,
             'total_amount' => (float) $this->total_amount,
             'notes' => $this->notes,
+            'payment_method' => $this->payment_method,
             'status' => $this->status,
             'source' => $this->source,
             'purchase_order_id' => $this->purchase_order_id,

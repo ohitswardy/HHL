@@ -59,10 +59,11 @@ class PosController extends Controller
                 : 0;
             $totalAmount = $subtotal - $discountAmount + $deliveryFee;
 
-            // Determine sale status: pending if any payments are deferred (bank_transfer/check/credit)
+            // Determine sale status: pending if any payments are deferred
+            // business_bank is deferred — it requires confirmation that the cheque/transfer was received
             $methods = collect($request->payments)->pluck('payment_method');
             $hasImmediateMethod = $methods->intersect(['cash', 'card'])->isNotEmpty();
-            $hasDeferredMethod  = $methods->intersect(['bank_transfer', 'check', 'credit'])->isNotEmpty();
+            $hasDeferredMethod  = $methods->intersect(['bank_transfer', 'check', 'credit', 'business_bank'])->isNotEmpty();
             $saleStatus = $hasDeferredMethod ? 'pending' : 'completed';
 
             // Create transaction
@@ -93,7 +94,8 @@ class PosController extends Controller
                     $paymentStatus = 'pending';
                 }
 
-                $isPending = in_array($method, ['credit', 'bank_transfer', 'check']);
+                // business_bank is also deferred — awaiting bank confirmation of cheque/transfer
+                $isPending = in_array($method, ['credit', 'bank_transfer', 'check', 'business_bank']);
                 $sale->payments()->create([
                     'payment_method'   => $method,
                     'amount'           => $payment['amount'],
@@ -104,9 +106,9 @@ class PosController extends Controller
                 ]);
             }
 
-            // If credit/bank_transfer/check sale, update client outstanding balance
+            // Track outstanding balance for all deferred payment methods (incl. business_bank)
             $pendingAmount = collect($request->payments)
-                ->whereIn('payment_method', ['credit', 'bank_transfer', 'check'])
+                ->whereIn('payment_method', ['credit', 'bank_transfer', 'check', 'business_bank'])
                 ->sum('amount');
 
             if ($pendingAmount > 0 && $client) {
@@ -216,10 +218,10 @@ class PosController extends Controller
                 );
             }
 
-            // Reverse client outstanding balance if credit/bank_transfer/check
+            // Reverse client outstanding balance for all deferred payment methods
             if ($sale->client_id) {
                 $pendingAmount = $sale->payments()
-                    ->whereIn('payment_method', ['credit', 'bank_transfer', 'check'])
+                    ->whereIn('payment_method', ['credit', 'bank_transfer', 'check', 'business_bank'])
                     ->sum('amount');
                 if ($pendingAmount > 0) {
                     $sale->client->decrement('outstanding_balance', $pendingAmount);
@@ -242,17 +244,29 @@ class PosController extends Controller
             return response()->json(['message' => 'Only pending transactions can be marked as completed.'], 422);
         }
 
+        // Capture pending business_bank payments BEFORE bulk-confirming, so we can post their journal entries
+        $pendingBankPayments = $sale->payments()
+            ->where('status', 'pending')
+            ->where('payment_method', 'business_bank')
+            ->get();
+
         $sale->update(['status' => 'completed']);
         $sale->payments()
             ->where('status', 'pending')
-            ->whereIn('payment_method', ['bank_transfer', 'check', 'credit'])
+            ->whereIn('payment_method', ['bank_transfer', 'check', 'credit', 'business_bank'])
             ->update(['status' => 'confirmed', 'paid_at' => now()]);
+
+        // Post DR Cash in Bank (1020) / CR AR (1100) for each confirmed business_bank payment
+        foreach ($pendingBankPayments as $bankPayment) {
+            $bankPayment->refresh();
+            $this->journalService->postPaymentEntry($bankPayment);
+        }
 
         // Clear outstanding balance for the now-confirmed deferred payments
         if ($sale->client_id) {
             $sale->load('client');
             $deferredAmount = $sale->payments()
-                ->whereIn('payment_method', ['bank_transfer', 'check', 'credit'])
+                ->whereIn('payment_method', ['bank_transfer', 'check', 'credit', 'business_bank'])
                 ->sum('amount');
             if ($deferredAmount > 0) {
                 $sale->client->decrement('outstanding_balance', $deferredAmount);
@@ -274,7 +288,7 @@ class PosController extends Controller
         }
 
         $request->validate([
-            'payment_method'   => ['required', 'in:cash,card,bank_transfer,check'],
+            'payment_method'   => ['required', 'in:cash,card,bank_transfer,check,business_bank'],
             'amount'           => ['required', 'numeric', 'min:0.01'],
             'reference_number' => ['nullable', 'string', 'max:100'],
         ]);
@@ -286,7 +300,7 @@ class PosController extends Controller
         }
 
         DB::transaction(function () use ($request, $sale, $balanceDue) {
-            $isPending = in_array($request->payment_method, ['bank_transfer', 'check']);
+            $isPending = in_array($request->payment_method, ['bank_transfer', 'check', 'business_bank']);
 
             // Create the new payment record
             $sale->payments()->create([

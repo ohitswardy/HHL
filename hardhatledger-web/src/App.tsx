@@ -22,6 +22,7 @@ import { CashFlowPage } from './modules/accounting/pages/CashFlowPage';
 import { ClientStatementsPage } from './modules/accounting/pages/ClientStatementsPage';
 import { ExpensesPage } from './modules/accounting/pages/ExpensesPage';
 import { ChartOfAccountsPage } from './modules/accounting/pages/ChartOfAccountsPage';
+import { BankTransactionsPage } from './modules/accounting/pages/BankTransactionsPage';
 import { UsersPage } from './modules/users/pages/UsersPage';
 import { RoleManagementPage } from './modules/roles/pages/RoleManagementPage';
 import { useEffect } from 'react';
@@ -70,6 +71,7 @@ function App() {
           <Route path="/accounting/reports/cash-flow" element={<ProtectedRoute permission="accounting.view"><CashFlowPage /></ProtectedRoute>} />
           <Route path="/accounting/reports/client-statements" element={<ProtectedRoute permission="accounting.view"><ClientStatementsPage /></ProtectedRoute>} />
           <Route path="/accounting/chart-of-accounts" element={<ProtectedRoute permission="accounting.view"><ChartOfAccountsPage /></ProtectedRoute>} />
+          <Route path="/accounting/bank-transactions" element={<ProtectedRoute permission="accounting.view"><BankTransactionsPage /></ProtectedRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

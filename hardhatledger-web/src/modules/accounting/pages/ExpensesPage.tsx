@@ -39,6 +39,7 @@ interface Expense {
   tax_amount: number;
   total_amount: number;
   notes: string | null;
+  payment_method: string;
   status: 'draft' | 'recorded' | 'voided';
   source: 'manual' | 'purchase_order';
   purchase_order_id: number | null;
@@ -600,6 +601,7 @@ function ExpenseFormModal({
     subtotal: expense?.subtotal?.toString() ?? '',
     tax_amount: expense?.tax_amount?.toString() ?? '',
     notes: expense?.notes ?? '',
+    payment_method: expense?.payment_method ?? 'cash',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -634,6 +636,7 @@ function ExpenseFormModal({
     tax_amount: parseFloat(form.tax_amount) || 0,
     total_amount: computedTotal,
     notes: form.notes || null,
+    payment_method: form.payment_method,
   });
 
   const handleSaveDraft = async () => {
@@ -768,6 +771,22 @@ function ExpenseFormModal({
               options={[{ value: '', label: 'Select category...' }, ...categories.map((c) => ({ value: c.id, label: `${c.name} (${c.account_code})` }))]}
             />
             {errors.expense_category_id && <p className="text-xs text-red-500 mt-1">{errors.expense_category_id}</p>}
+          </div>
+
+          {/* Payment Method */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Payment Method</label>
+            <Select
+              value={form.payment_method}
+              onChange={(e) => setForm((f) => ({ ...f, payment_method: e.target.value }))}
+              options={[
+                { value: 'cash', label: 'Cash' },
+                { value: 'card', label: 'Card' },
+                { value: 'bank_transfer', label: 'Bank Transfer' },
+                { value: 'check', label: 'Check' },
+                { value: 'business_bank', label: 'Business Bank' },
+              ]}
+            />
           </div>
 
           {/* Subtotal */}

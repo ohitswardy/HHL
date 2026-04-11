@@ -50,19 +50,40 @@ class JournalService
             ]);
 
             $cashAccount      = $this->getAccountByCode('1010');
+            $bankAccount      = $this->getAccountByCode('1020');
             $arAccount         = $this->getAccountByCode('1100');
             $inventoryAccount  = $this->getAccountByCode('1200');
 
-            // Determine how much was paid in cash vs credit
+            // Determine how much was paid in cash vs credit vs business bank
             $totalPaid    = (float) $sale->payments()->where('status', 'confirmed')->sum('amount');
             $totalAmount  = (float) $sale->total_amount;
 
-            // Cap cash received at the sale total — overpayment is change returned to customer
-            // and should not be journalized. Only the actual sale value enters the books.
-            $effectiveCash   = min($totalPaid, $totalAmount);
-            $creditAmount    = $totalAmount - $effectiveCash;
+            // Business bank deposits go to 1020, other immediate payments go to 1010
+            $bankPaid = (float) $sale->payments()
+                ->where('status', 'confirmed')
+                ->where('payment_method', 'business_bank')
+                ->sum('amount');
+            $cashPaid = (float) $sale->payments()
+                ->where('status', 'confirmed')
+                ->whereIn('payment_method', ['cash', 'card'])
+                ->sum('amount');
 
-            // DR: Cash for amount received (capped at sale total)
+            // Cap total received at the sale total
+            $effectiveTotal  = min($totalPaid, $totalAmount);
+            $effectiveBank   = min($bankPaid, $effectiveTotal);
+            $effectiveCash   = min($cashPaid, $effectiveTotal - $effectiveBank);
+            $creditAmount    = $totalAmount - $effectiveBank - $effectiveCash;
+
+            // DR: Cash in Bank for business bank payments
+            if ($effectiveBank > 0) {
+                $entry->lines()->create([
+                    'account_id' => $bankAccount->id,
+                    'debit'  => $effectiveBank,
+                    'credit' => 0,
+                ]);
+            }
+
+            // DR: Cash on Hand for cash/card payments
             if ($effectiveCash > 0) {
                 $entry->lines()->create([
                     'account_id' => $cashAccount->id,
@@ -218,7 +239,9 @@ class JournalService
                 'user_id' => Auth::id(),
             ]);
 
-            $cashAccount = $this->getAccountByCode('1010');
+            // Route to Cash in Bank (1020) for business_bank payments, Cash on Hand (1010) otherwise
+            $cashAccountCode = $payment->payment_method === 'business_bank' ? '1020' : '1010';
+            $cashAccount = $this->getAccountByCode($cashAccountCode);
             $arAccount = $this->getAccountByCode('1100');
 
             $amount = (float) $payment->amount;

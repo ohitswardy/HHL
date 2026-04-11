@@ -17,6 +17,7 @@ class StorePurchaseOrderRequest extends FormRequest
             'supplier_id' => ['required', 'exists:suppliers,id'],
             'expected_date' => ['nullable', 'date', 'after_or_equal:today'],
             'notes' => ['nullable', 'string'],
+            'payment_method' => ['nullable', 'string', 'in:cash,card,bank_transfer,check,business_bank'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.quantity_ordered' => ['required', 'integer', 'min:1'],

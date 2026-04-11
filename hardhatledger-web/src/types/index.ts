@@ -118,6 +118,7 @@ export interface PurchaseOrder {
   expected_date: string | null;
   received_date: string | null;
   notes: string | null;
+  payment_method?: string;
   items?: PurchaseOrderItem[];
   created_at: string;
 }
@@ -135,7 +136,7 @@ export interface SaleItem {
 export interface Payment {
   id: number;
   sales_transaction_id: number;
-  payment_method: 'cash' | 'card' | 'bank_transfer' | 'check' | 'credit';
+  payment_method: 'cash' | 'card' | 'bank_transfer' | 'check' | 'credit' | 'business_bank';
   amount: number;
   reference_number: string | null;
   due_date: string | null;
@@ -239,4 +240,27 @@ export interface CartItem {
   unit_price: number;
   discount: number;
   line_total: number;
+}
+
+export interface BankTransaction {
+  id: string;
+  date: string;
+  ref_no: string;
+  type: 'Deposit' | 'Expense' | 'Purchase Order';
+  payee_account: string;
+  memo: string;
+  payment_amount: number;
+  deposit_amount: number;
+  tax: number;
+  balance: number;
+  source_type: 'sale' | 'expense' | 'purchase_order';
+  source_id: number;
+}
+
+export interface BankTransactionSummary {
+  total_deposits: number;
+  total_payments: number;
+  total_tax: number;
+  net_balance: number;
+  count: number;
 }

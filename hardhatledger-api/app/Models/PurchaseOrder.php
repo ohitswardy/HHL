@@ -19,6 +19,7 @@ class PurchaseOrder extends Model
         'expected_date',
         'received_date',
         'notes',
+        'payment_method',
         'branch_id',
     ];
 

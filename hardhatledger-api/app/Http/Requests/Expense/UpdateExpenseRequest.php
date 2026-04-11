@@ -23,6 +23,7 @@ class UpdateExpenseRequest extends FormRequest
             'tax_amount' => ['nullable', 'numeric', 'min:0'],
             'total_amount' => ['sometimes', 'required', 'numeric', 'min:0.01'],
             'notes' => ['nullable', 'string'],
+            'payment_method' => ['nullable', 'string', 'in:cash,card,bank_transfer,check,business_bank'],
         ];
     }
 }

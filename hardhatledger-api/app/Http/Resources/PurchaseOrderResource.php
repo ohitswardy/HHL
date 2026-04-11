@@ -20,6 +20,7 @@ class PurchaseOrderResource extends JsonResource
             'expected_date' => $this->expected_date?->toDateString(),
             'received_date' => $this->received_date?->toDateString(),
             'notes' => $this->notes,
+            'payment_method' => $this->payment_method,
             'items' => $this->whenLoaded('items', fn () =>
                 $this->items->map(fn ($item) => [
                     'id' => $item->id,
