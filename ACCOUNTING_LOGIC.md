@@ -76,134 +76,89 @@ All accounts organized by **type** and **nature** (normal debit vs credit):
 #### ASSETS (Normal Debit Balance)
 ```
 10xx  CURRENT ASSETS
-├── 1001  Cash on Hand
-├── 1010  Bank - CBS Account (TMHT)
-├── 1020  Bank - MBT Account (TMHT)
-├── 1025  Bank - Online Transfer (TMHT/RJ)
-├── 1030  Bank - PNB Accounts (All entities)
-├── 1040  Bank - BDO Accounts
-├── 1050  Bank - Other Banks
+├── 1010  Cash on Hand
+├── 1020  Cash in Bank
 ├── 1100  Accounts Receivable (A/R)
 ├── 1120  Allowance for Bad Debts (contra account)
-├── 1200  Inventory - Raw Materials/Products
-├── 1250  Inventory - Finished Goods
+├── 1200  Inventory
 └── 1300  Prepaid Expenses
 
-11xx  VAT & TAX ASSETS
-├── 1310  VAT on Purchases (Input VAT)
-│         Account Code: VAT-IN
-│         Debit Normal ✓
-│         Description: Accumulates 12% VAT from supplier purchases
-│         Formula: COGS VAT × 0.12
-└── 1320  Other Tax Receivables
+14xx  VAT & TAX ASSETS
+├── 1400  Input VAT
+          Debit Normal ✓
+          Description: Accumulates 12% VAT from VATable supplier purchases
+          Formula: (PO Total ÷ 1.12) × 0.12
+└── 1310  VAT on Purchases (legacy / supplemental tracking)
 
 15xx  FIXED ASSETS
 ├── 1500  Property, Plant & Equipment
 └── 1550  Accumulated Depreciation (contra)
-
-19xx  OTHER ASSETS
-└── 1900  Goodwill, Long-term Investments
 ```
 
 #### LIABILITIES (Normal Credit Balance)
 ```
 20xx  CURRENT LIABILITIES
-├── 2001  Accounts Payable (A/P)
-├── 2010  Short-term Loans
+├── 2010  Accounts Payable (A/P)
+├── 2020  Accrued Expenses
 └── 2100  VAT Payable (Output VAT)
-          Account Code: VAT-OUT
           Credit Normal ✓
-          Description: Accumulates 12% VAT from customer sales
-          Formula: (VATable Sales / 1.12) × 0.12
-
-21xx  OTHER CURRENT LIABILITIES
+          Description: Accumulates 12% VAT from VATable sales
+          Formula: (VATable Sales ÷ 1.12) × 0.12
 ├── 2110  Income Tax Payable
-├── 2120  Employee Withholdings
-└── 2130  Accrued Expenses
 ```
 
 #### SHAREHOLDERS' EQUITY (Normal Credit Balance)
 ```
 30xx  EQUITY
-├── 3000  Share Capital (Cash contributed)
-├── 3100  Retained Earnings (P&L carryover)
-├── 3200  Dividend Disbursed (negative equity)
-└── 3300  Other Comprehensive Income
+├── 3010  Share Capital (Cash contributed)
+├── 3020  Retained Earnings (P&L carryover)
+└── 3200  Dividend Disbursed (negative equity)
 ```
 
 #### REVENUE (Normal Credit Balance)
 ```
 40xx  OPERATING REVENUE
-├── 4010  Sales - NON-VAT Retail (0% VAT)
-│         Account Code: SALES-NONVAT
+├── 4010  Sales (Non-VAT / Retail)
 │         Credit Normal ✓
-│         Recognition: Full receipt amount (no adjustment)
-│         Example: Item sells for ₱460 (inclusive) → Entire ₱460 recorded
+│         Recognition: Full amount recorded (no VAT split)
+│         Applied to: Retail tier sales
+│         Example: Item sells for ₱460 → Entire ₱460 recorded as revenue
 │
-├── 4020  Sales - VATable / Wholesale (12% VAT)
-│         Account Code: SALES-VAT
-│         Credit Normal ✓
-│         Recognition: Amount ÷ 1.12 = taxable amount recorded
-│         VAT portion tracked separately → VAT Payable liability
-│         Example: Item sells for ₱560 (inclusive of 12% VAT)
-│                  → Record Revenue: ₱500 (560 ÷ 1.12)
-│                  → Track VAT: ₱60 liability
-│
-└── 4030  Other Operating Revenue
+└── 4020  Sales (VATable — Wholesale / Contractor / VIP)
+          Credit Normal ✓
+          Recognition: Amount ÷ 1.12 = net revenue recorded
+          VAT portion tracked separately → VAT Payable (2100)
+          Applied to: Wholesale, Contractor, VIP tier sales
+          Example: Item sells for ₱560 (incl. 12% VAT)
+                   → Record Revenue: ₱500 (560 ÷ 1.12)
+                   → Track VAT: ₱60 → credit 2100
 ```
 
 #### COST OF SALES (Normal Debit Balance)
 ```
 50xx  COST OF GOODS SOLD
-├── 5010  COGS - NON-VAT
-│         Account Code: COGS-NONVAT
+├── 5010  COGS VATable
 │         Debit Normal ✓
-│         Source: Supplier purchase orders tagged "NON-VAT"
-│         Formula: Sum of all confirmed NON-VAT PO item costs
-│         Recognition: On PO receipt confirmation
+│         Source: Sales of products purchased from VATable suppliers
+│         Formula: product.cost_price (net of VAT portion already allocated at PO)
 │
-├── 5020  COGS - VAT (Taxable Purchases)
-│         Account Code: COGS-VAT
+├── 5011  COGS NonVATable
 │         Debit Normal ✓
-│         Source: Supplier purchase orders tagged "VAT"
-│         Formula: (PO Amount ÷ 1.12) posted; VAT portion → VAT Asset
-│         Recognition: On PO receipt confirmation
-│         Example: Purchase invoice ₱560 (inclusive of 12% VAT)
-│                  → Record COGS: ₱500 (560 ÷ 1.12)
-│                  → Create VAT Asset: ₱60 → VAT on Purchases (1310)
+│         Source: Sales of products purchased from non-VATable suppliers
 │
-└── 5030  Inventory Adjustment
+├── 5020  Operating Expenses (via Expenses module)
+├── 5030  Utilities (via Expenses module)
+├── 5040  Salaries & Wages (via Expenses module)
+├── 5050  Discounts Given
+└── 5060  Cost of Sales (general)
 ```
 
-#### EXPENSES (Normal Debit Balance)
+#### OTHER EXPENSES (Normal Debit Balance)
 ```
-60xx  OPERATING EXPENSES
-├── 6010  Salaries & Wages
-├── 6020  Utilities (Electricity, Water, Gas)
-├── 6030  Rent or Lease Payments
-├── 6040  Office Expenses & Supplies
-├── 6050  Repairs & Maintenance
-├── 6060  Shipping & Delivery Expenses
-├── 6070  Insurance Expenses
-├── 6080  Bank Charges & Fees
-└── 6090  Depreciation Expense
-
-61xx  ADMINISTRATIVE EXPENSES
-├── 6110  Salaries - General & Admin
-├── 6120  Legal & Professional Fees
-├── 6130  Dues & Subscriptions
-├── 6140  Advertising & Promotional
-└── 6150  Travel Expenses
-
-62xx  OTHER EXPENSES
-├── 6210  Bad Debts Expense
-├── 6220  Loss on Disposal of Assets
-├── 6230  Reconciliation Discrepancies
-│         Account Code: DISC-ADJUST
-│         Debit Normal ✓
-│         Use: For unexplained variances in inventory or cash
-│
-└── 6240  Interest Expense
+60xx  OTHER EXPENSES
+└── 6230  Reconciliation Discrepancies
+          Debit Normal ✓
+          Use: For unexplained variances in inventory or cash
 ```
 
 ---
@@ -212,29 +167,38 @@ All accounts organized by **type** and **nature** (normal debit vs credit):
 
 ### Sales Transactions (Point of Sale)
 
-#### Case 1: NON-VAT Sale
-**Scenario:** Item sells for ₱460 (no VAT included, retail selling to walk-in)
+**VAT Determination Rule:**  
+VATability is determined by the **client tier**, not per-product.
+- **Retail tier** (walk-in / unassigned client) → **Non-VAT** (full price to account 4010)
+- **Wholesale, Contractor, VIP tiers** → **VATable** (price split: net to 4020 + VAT to 2100)
+
+**Cash Routing Rule:**  
+- `cash` payment method → DR `1010` (Cash on Hand)  
+- `business_bank` payment method → DR `1020` (Cash in Bank)  
+- `credit` payment method → DR `1100` (Accounts Receivable)
+
+#### Case 1: NON-VAT Sale (Retail Tier)
+**Scenario:** Retail customer pays ₱460 cash
 
 ```
 Transaction Entry:
 ├── Selling Price: ₱460 (final price, no VAT breakdown)
-├── Is VATable: NO
+├── Client Tier: Retail
 └── Result: 
-    └── Revenue Account 4010 (Sales - NON-VAT): ₱460 credit
+    └── Revenue Account 4010 (Sales Non-VAT): ₱460 credit
         └── Full amount recorded as income
         └── NO VAT liability created
         └── Customer pays exactly what was sold
 
 Journal Entry Example:
 ┌─────────────────────────────────┐
-│ DR Cash/Bank/A/R    ₱460        │
-│   CR Sales-NONVAT             │
-│      (4010)         ₱460        │
+│ DR Cash on Hand (1010)  ₱460        │
+│   CR Sales (4010)       ₱460        │
 └─────────────────────────────────┘
 ```
 
-#### Case 2: VATable Sale
-**Scenario:** Item sells for ₱560 total (includes 12% VAT, wholesale to contractor)
+#### Case 2: VATable Sale (Wholesale / Contractor / VIP Tier)
+**Scenario:** Wholesale client pays ₱560 total (includes 12% VAT)
 
 ```
 Breakdown:
@@ -243,35 +207,28 @@ Breakdown:
 ├── Calculation: ₱560 ÷ 1.12 = ₱500 (taxable amount)
 ├── VAT Amount: ₱560 - ₱500 = ₱60
 └── Result:
-    ├── Revenue Account 4020 (Sales - VATable): ₱500 credit
+    ├── Revenue Account 4020 (Sales VATable): ₱500 credit
     ├── VAT Payable Account 2100: ₱60 credit (liability to gov)
     └── Customer paid ₱560 to settle the invoice
 
-Journal Entry Example:
+Journal Entry Example (business_bank payment):
 ┌──────────────────────────────────────────┐
-│ DR Cash/Bank/A/R        ₱560             │
-│   CR Sales-VATable    ₱500                │
-│   (4020)                                  │
-│   CR VAT Payable       ₱60                │
-│   (2100)                                  │
+│ DR Cash in Bank (1020)      ₱560             │
+│   CR Sales (VATable) (4020) ₱500             │
+│   CR VAT Payable (2100)      ₱60              │
 └──────────────────────────────────────────┘
 ```
 
 ### Recognition Rules
 1. **Payment Method**:
-   - If PAID IN CASH → Debit Cash on Hand (1001) or specific bank account (101x)
-   - If CREDIT SALE → Debit Accounts Receivable (1100)
-   - If MIXED → Split debit between Cash and A/R
+   - If `cash` → Debit Cash on Hand (1010)
+   - If `business_bank` → Debit Cash in Bank (1020)
+   - If `credit` → Debit Accounts Receivable (1100)
+   - If MIXED payments → Split debit across the relevant accounts
 
-2. **Account Receivable Tracking**:
-   - Every credit sale creates an A/R record with `client_id`
-   - Track by client for aging analysis
-   - Link to client tier for discount validation
-
-3. **Multi-Item Sales**:
-   - Aggregate by VAT category (NON-VAT vs VATable)
-   - Create ONE journal entry per sale transaction
-   - Summarize COGS similarly
+2. **VAT Determination** (tier-based):
+   - **Retail** tier (or walk-in/null client) → Non-VAT sale → account 4010
+   - **Wholesale / Contractor / VIP** tier → VATable sale → account 4020 + 2100
 
 ---
 
@@ -297,50 +254,34 @@ Accounting: Off-balance-sheet (memo)
 ```
 Status: "partial" or "received"
 Action: POST JOURNAL ENTRY immediately
+VAT determination: based on supplier's `is_vatable` flag
 
-Case A: NON-VAT Purchase (0% VAT)
+Case A: NON-VAT Purchase (supplier is_vatable = false)
 ├── PO Amount: ₱5,000 (exact cost, no VAT)
-├── Tag: "is_vatable" = false
 └── Journal Entry:
     ┌──────────────────────────────┐
-    │ DR Inventory (1200)   ₱5,000 │
-    │ DR COGS-NONVAT (5010) ₱5,000 │
-    │   CR Accounts Payable (2001)  │
-    │      ₱10,000                  │
-    └──────────────────────────────┘
-    
-    OR if paid immediately:
-    ┌──────────────────────────────┐
-    │ DR Inventory (1200)   ₱5,000 │
-    │ DR COGS-NONVAT (5010) ₱5,000 │
-    │   CR Cash/Bank (101x)         │
-    │      ₱10,000                  │
+    │ DR Inventory (1200)     ₱5,000 │
+    │   CR Accounts Payable (2010)    │
+    │      ₱5,000                     │
     └──────────────────────────────┘
 
-Case B: VATable Purchase (includes 12% VAT)
+Case B: VATable Purchase (supplier is_vatable = true)
 ├── PO Invoice Amount: ₱5,600 (inclusive of VAT)
-├── Tag: "is_vatable" = true
 ├── Breakdown:
 │   ├── Taxable Cost: ₱5,600 ÷ 1.12 = ₱5,000
 │   ├── VAT Amount: ₱5,600 - ₱5,000 = ₱600
-│   └── Supplier invoice shows:
-│       ├── Net: ₱5,000
-│       ├── VAT (12%): ₱600
-│       └── Total: ₱5,600
-│
-└── Journal Entry (Proper VAT Treatment):
-    ┌──────────────────────────────────────────┐
-    │ DR Inventory (1200)        ₱5,000        │
-    │ DR COGS-VAT (5020)         ₱5,000        │
-    │ DR VAT on Purchases (1310) ₱600          │
-    │   CR Accounts Payable (2001) ₱10,600     │
-    │      (or CR Cash if paid)                 │
-    └──────────────────────────────────────────┘
+│   └── Supplier invoice shows: Net ₱5,000 + VAT ₱600 = Total ₱5,600
+└── Journal Entry:
+    ┌────────────────────────────────────────┐
+    │ DR Inventory (1200)         ₱5,000        │
+    │ DR Input VAT (1400)          ₱600          │
+    │   CR Accounts Payable (2010) ₱5,600        │
+    └────────────────────────────────────────┘
     
     Notes:
-    ├── Inventory & COGS: ₱5,000 (net of VAT)
-    ├── VAT Asset: ₱600 (can be recovered/offset against sales VAT)
-    └── Total cash outflow: ₱5,600
+    ├── Inventory: ₱5,000 (net of VAT)
+    ├── Input VAT Asset: ₱600 (recoverable against Output VAT 2100)
+    └── Total AP payable: ₱5,600
 ```
 
 ### COGS Recognition (At Time of Cost)
@@ -361,14 +302,13 @@ Case B: VATable Purchase (includes 12% VAT)
 
 ```
 VAT IN (Asset)                        VAT OUT (Liability)
-├── Source: Purchases from suppliers  ├── Source: Sales to customers
-├── Account: 1310                     ├── Account: 2100
-├── Category: CURRENT ASSET           ├── Category: CURRENT LIABILITY
-├── Treatment: Recoverable            ├── Treatment: Payable to BIR
-└── Formula:                          └── Formula:
-    For VATable POs:                      For VATable Sales:
-    PO Amount = Invoice Total             Sale Amount = Total ÷ 1.12
-    VAT In = (Invoice ÷ 1.12) × 0.12     VAT Out = Amount × 0.12
+├── Source: VATable purchases (is_vatable suppliers)  ├── Source: Wholesale/Contractor/VIP tier sales
+├── Account: 1400 (Input VAT)            ├── Account: 2100 (VAT Payable)
+├── Category: CURRENT ASSET               ├── Category: CURRENT LIABILITY
+├── Treatment: Recoverable                ├── Treatment: Payable to BIR
+└── Formula:                              └── Formula:
+    For VATable POs:                          For VATable Sales:
+    VAT In = (PO Total ÷ 1.12) × 0.12        VAT Out = Sale Total ÷ 1.12 × 0.12
 
 Example Cycle:
 1. Buy from supplier for ₱5,600 (incl 12% VAT)
@@ -411,23 +351,15 @@ VAT Liability to Pay = Output VAT - Input VAT
 **1. Cash and Cash Equivalents**
 ```
 Accounts to Aggregate (Sum all balances):
-├── 1001  Cash on Hand
-├── 1010  Bank - CBS Account (TMHT) - 3556
-├── 1020  Bank - MBT Account (TMHT) - 8251
-├── 1025  Bank - Online Transfer (TMHT/RJ)
-├── 1030  Bank - PNB Accounts (Multiple)
-├── 1040  Bank - BDO Accounts
-└── 1050  Bank - Other Banks
+├── 1010  Cash on Hand
+└── 1020  Cash in Bank
 
 Display Format on Balance Sheet:
 Cash and Cash Equivalents        ₱X,XXX,XXX
-  Bank (TMHT) CBS - 3556        ₱X,XXX
-  Bank (TMHT) MBT - 8251        ₱X,XXX
-  Bank (TMHT) PNB 9145          ₱X,XXX
-  [... list each bank with last 4 digits ...]
+  Cash on Hand (1010)           ₱X,XXX
+  Cash in Bank (1020)           ₱X,XXX
   
-Calculation: Sum all bank account balances
-Note: Show negative balances (overdrafts) as separate line if TMHT CBS is negative
+Calculation: Sum of balances of accounts 1010 and 1020
 ```
 
 **2. Accounts Receivable**

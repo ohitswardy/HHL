@@ -73,8 +73,13 @@ const MODULE_MAP: { group: string; label: string; permissions: string[] }[] = [
   },
   {
     group: 'Admin',
+    label: 'Audit Trail',
+    permissions: ['audit-logs.view'],
+  },
+  {
+    group: 'Admin',
     label: 'System',
-    permissions: ['audit-logs.view', 'settings.manage'],
+    permissions: ['settings.manage'],
   },
 ];
 

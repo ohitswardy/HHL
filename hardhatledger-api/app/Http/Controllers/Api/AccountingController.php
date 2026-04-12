@@ -479,11 +479,21 @@ class AccountingController extends Controller
         // Accrued Expenses change (increase = source)
         $accrChange= $netAccount('2020', 'credit_minus_debit');
 
-        // Cash paid for operating expenses (5020–5050)
+        // Cash paid for operating expenses (5020–5050) and other expenses (6xxx)
         $operatingExpenses = 0.0;
         $expCodes = ['5020', '5030', '5040', '5050'];
         foreach ($expCodes as $code) {
             $operatingExpenses += $netAccount($code, 'debit_minus_credit');
+        }
+
+        // Include 6xxx "Other Expenses" accounts that appear in the Income Statement
+        $otherExpAccounts = ChartOfAccount::where('type', 'expense')
+            ->whereNotNull('parent_id')
+            ->where('code', 'like', '6%')
+            ->pluck('code');
+        $otherExpensesTotal = 0.0;
+        foreach ($otherExpAccounts as $code) {
+            $otherExpensesTotal += $netAccount($code, 'debit_minus_credit');
         }
 
         $operatingItems = [
@@ -494,6 +504,7 @@ class AccountingController extends Controller
             ['label' => 'Change in Accounts Payable',     'amount' => $apChange,            'type' => $apChange  > 0 ? 'inflow'  : 'outflow'],
             ['label' => 'Change in Accrued Expenses',     'amount' => $accrChange,          'type' => $accrChange> 0 ? 'inflow'  : 'outflow'],
             ['label' => 'Operating Expenses Paid',        'amount' => -$operatingExpenses,  'type' => 'outflow'],
+            ['label' => 'Other Expenses Paid',            'amount' => -$otherExpensesTotal, 'type' => 'outflow'],
         ];
         $netOperating = array_sum(array_column($operatingItems, 'amount'));
 

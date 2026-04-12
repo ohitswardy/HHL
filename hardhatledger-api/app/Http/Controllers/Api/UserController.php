@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
@@ -64,6 +64,12 @@ class UserController extends Controller
 
         $user->assignRole($validated['role']);
 
+        AuditService::log('created', 'users', $user->id, null, [
+            'name'  => $user->name,
+            'email' => $user->email,
+            'role'  => $validated['role'],
+        ]);
+
         return response()->json([
             'data' => new UserResource($user->load('roles')),
             'message' => 'User created successfully.',
@@ -87,11 +93,20 @@ class UserController extends Controller
             'is_active' => 'sometimes|boolean',
         ]);
 
+        $old = ['name' => $user->name, 'email' => $user->email, 'is_active' => $user->is_active, 'role' => $user->getRoleNames()->first()];
+
         $user->update(collect($validated)->except('role')->toArray());
 
         if (isset($validated['role'])) {
             $user->syncRoles([$validated['role']]);
         }
+
+        AuditService::log('updated', 'users', $user->id, $old, [
+            'name'      => $user->fresh()->name,
+            'email'     => $user->fresh()->email,
+            'is_active' => $user->fresh()->is_active,
+            'role'      => $user->fresh()->getRoleNames()->first(),
+        ]);
 
         return response()->json([
             'data' => new UserResource($user->fresh()->load('roles')),
@@ -105,8 +120,12 @@ class UserController extends Controller
             return response()->json(['message' => 'You cannot delete your own account.'], 403);
         }
 
+        $snapshot = ['name' => $user->name, 'email' => $user->email, 'role' => $user->getRoleNames()->first()];
+
         $user->tokens()->delete();
         $user->delete();
+
+        AuditService::log('deleted', 'users', $user->id, $snapshot, null);
 
         return response()->json(['message' => 'User deleted successfully.']);
     }

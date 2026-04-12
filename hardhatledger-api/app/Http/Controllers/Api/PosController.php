@@ -218,13 +218,13 @@ class PosController extends Controller
                 );
             }
 
-            // Reverse client outstanding balance for all deferred payment methods
+            // Reverse client outstanding balance — use balance_due (total minus confirmed
+            // payments) so we only reverse what hasn't already been reconciled by
+            // recordPayment or markCompleted.  This avoids double-decrements.
             if ($sale->client_id) {
-                $pendingAmount = $sale->payments()
-                    ->whereIn('payment_method', ['credit', 'bank_transfer', 'check', 'business_bank'])
-                    ->sum('amount');
-                if ($pendingAmount > 0) {
-                    $sale->client->decrement('outstanding_balance', $pendingAmount);
+                $remainingBalance = max(0, (float) $sale->balance_due);
+                if ($remainingBalance > 0) {
+                    $sale->client->decrement('outstanding_balance', $remainingBalance);
                 }
             }
 
@@ -244,10 +244,10 @@ class PosController extends Controller
             return response()->json(['message' => 'Only pending transactions can be marked as completed.'], 422);
         }
 
-        // Capture pending business_bank payments BEFORE bulk-confirming, so we can post their journal entries
-        $pendingBankPayments = $sale->payments()
+        // Capture ALL pending deferred payments BEFORE bulk-confirming, so we can post their journal entries
+        $pendingDeferredPayments = $sale->payments()
             ->where('status', 'pending')
-            ->where('payment_method', 'business_bank')
+            ->whereIn('payment_method', ['credit', 'bank_transfer', 'check', 'business_bank'])
             ->get();
 
         $sale->update(['status' => 'completed']);
@@ -256,10 +256,10 @@ class PosController extends Controller
             ->whereIn('payment_method', ['bank_transfer', 'check', 'credit', 'business_bank'])
             ->update(['status' => 'confirmed', 'paid_at' => now()]);
 
-        // Post DR Cash in Bank (1020) / CR AR (1100) for each confirmed business_bank payment
-        foreach ($pendingBankPayments as $bankPayment) {
-            $bankPayment->refresh();
-            $this->journalService->postPaymentEntry($bankPayment);
+        // Post DR Cash/Bank / CR AR for each confirmed deferred payment
+        foreach ($pendingDeferredPayments as $deferredPayment) {
+            $deferredPayment->refresh();
+            $this->journalService->postPaymentEntry($deferredPayment);
         }
 
         // Clear outstanding balance for the now-confirmed deferred payments
@@ -303,7 +303,7 @@ class PosController extends Controller
             $isPending = in_array($request->payment_method, ['bank_transfer', 'check', 'business_bank']);
 
             // Create the new payment record
-            $sale->payments()->create([
+            $payment = $sale->payments()->create([
                 'payment_method'   => $request->payment_method,
                 'amount'           => $request->amount,
                 'reference_number' => $request->reference_number,
@@ -311,6 +311,11 @@ class PosController extends Controller
                 'paid_at'          => $isPending ? null : now(),
                 'branch_id'        => $sale->branch_id ?? 1,
             ]);
+
+            // Post journal entry for confirmed payments (DR Cash/Bank, CR AR)
+            if (!$isPending) {
+                $this->journalService->postPaymentEntry($payment);
+            }
 
             // Decrement client outstanding balance for the amount being paid
             if ($sale->client_id) {

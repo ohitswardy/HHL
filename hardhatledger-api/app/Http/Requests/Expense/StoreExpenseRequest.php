@@ -26,4 +26,20 @@ class StoreExpenseRequest extends FormRequest
             'payment_method' => ['nullable', 'string', 'in:cash,card,bank_transfer,check,business_bank'],
         ];
     }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            $subtotal = (float) ($this->subtotal ?? 0);
+            $tax      = (float) ($this->tax_amount ?? 0);
+            $total    = (float) ($this->total_amount ?? 0);
+
+            if (abs($total - ($subtotal + $tax)) > 0.01) {
+                $validator->errors()->add(
+                    'total_amount',
+                    'Total amount must equal subtotal + tax amount.'
+                );
+            }
+        });
+    }
 }

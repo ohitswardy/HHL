@@ -38,7 +38,7 @@ Returns the authenticated user with roles and permissions.
 
 ## Users
 
-Requires permission: `manage users` (Super Admin only)
+Requires permission: `users.view` / `users.create` / `users.edit` / `users.delete`
 
 ### GET /users
 List all users (paginated).
@@ -52,6 +52,34 @@ Create a new user.
 ### GET /users/{id}
 ### PUT /users/{id}
 ### DELETE /users/{id}
+
+---
+
+## Roles
+
+### GET /roles
+List all roles with their permissions. Requires `roles.view`.
+
+### GET /roles/permissions
+List all available permissions. Requires `roles.view`.
+
+### GET /roles/{role}
+Get a single role with its permissions. Requires `roles.view`.
+
+### POST /roles
+Create a new role. Requires `roles.manage`.
+```json
+{ "name": "Custom Role", "permissions": ["pos.access", "products.view"] }
+```
+
+### PUT /roles/{role}
+Update a role's permissions. Requires `roles.manage`.
+```json
+{ "permissions": ["pos.access", "products.view", "inventory.view"] }
+```
+
+### DELETE /roles/{role}
+Delete a custom role. Requires `roles.manage`.
 
 ---
 
@@ -122,9 +150,12 @@ Query params: `search` (business_name/contact_person/phone), `client_tier_id`
   "email": "sales@philcement.com",
   "address": "Cebu City",
   "payment_terms": "Net 30",
+  "is_vatable": true,
   "notes": ""
 }
 ```
+`is_vatable` — when `true`, purchase orders from this supplier will automatically split out 12% Input VAT on receipt.
+
 ### GET /suppliers/{id}
 ### PUT /suppliers/{id}
 ### DELETE /suppliers/{id}
@@ -169,6 +200,35 @@ Resolve the price for a specific client.
 { "price": 260.00, "source": "tier" }
 ```
 
+### PUT /products/{id}/tier-prices
+Bulk-update tier prices for a product.
+```json
+{
+  "tier_prices": [
+    { "client_tier_id": 1, "price": 260.00 },
+    { "client_tier_id": 2, "price": 250.00 }
+  ]
+}
+```
+
+### GET /products/export/pdf
+Export the full product catalog as a PDF.
+
+### GET /products/export/csv
+Export the full product catalog as a CSV file.
+
+### GET /products/export/xlsx
+Export the full product catalog as an Excel (XLSX) file.
+
+### POST /products/import
+Bulk import products from a CSV file.
+
+**Content-Type:** `multipart/form-data`
+
+| Field | Type | Notes |
+|---|---|---|
+| `file` | file | CSV file with product data |
+
 ---
 
 ## Inventory
@@ -178,6 +238,9 @@ List active products with current stock levels.
 
 ### GET /inventory/movements
 Query params: `product_id`, `type` (in/out/adjustment), `date_from`, `date_to`
+
+### GET /inventory/movements/print
+Returns a paginated, printable view of inventory movements. Same query params as above.
 
 ### GET /inventory/low-stock
 Returns products where `quantity_on_hand <= reorder_level`.
@@ -213,11 +276,9 @@ Query params: `status`, `supplier_id`
 ```
 
 ### GET /purchase-orders/{id}
-### PUT /purchase-orders/{id}
-### DELETE /purchase-orders/{id}
 
 ### POST /purchase-orders/{id}/receive
-Marks goods as received, updates inventory stock.
+Marks goods as received. Updates inventory stock and posts the COGS journal entry.
 ```json
 {
   "items": [
@@ -225,6 +286,7 @@ Marks goods as received, updates inventory stock.
   ]
 }
 ```
+Receiving a PO also automatically creates a draft **Expense** record linked to the PO (visible in Accounting → Expenses).
 
 ---
 
@@ -234,65 +296,205 @@ Marks goods as received, updates inventory stock.
 Query params: `status`, `client_id`, `date_from`, `date_to`
 
 ### POST /pos/sales
-Creates a complete sale transaction with items and payments.
+Creates a sale transaction in **pending** status. Items are saved and inventory is reserved.
 ```json
 {
   "client_id": 1,
   "fulfillment_type": "pickup",
+  "delivery_fee": 0.00,
   "notes": "",
   "items": [
     { "product_id": 1, "quantity": 10, "discount": 0 }
-  ],
-  "payments": [
-    { "payment_method": "cash", "amount": 2800.00, "reference_number": null }
   ]
 }
 ```
 Prices are resolved server-side via `PricingService`. The client's tier price is applied automatically.
 
+`delivery_fee` is optional (default `0`). When `fulfillment_type` is `delivery`, set this to the delivery charge amount.
+
+**Sale status lifecycle:** `pending` → `completed` → `voided`
+
 ### GET /pos/sales/{id}
+
+### PATCH /pos/sales/{id}
+Update a pending sale (items, fulfillment type, notes).
+
+### POST /pos/sales/{id}/record-payment
+Record a payment against a pending sale. Multiple calls can be made for split payments.
+```json
+{
+  "payment_method": "cash",
+  "amount": 1500.00,
+  "reference_number": null,
+  "due_date": null
+}
+```
+`payment_method` options: `cash`, `card`, `bank_transfer`, `check`, `credit`, `business_bank`.
+
+`due_date` — optional, used for `credit` payment method to set the payment due date.
+
+### PATCH /pos/sales/{id}/complete
+Marks a pending sale as completed. Deducts inventory, posts journal entries.
+
 ### POST /pos/sales/{id}/void
-Voids a completed sale and reverses inventory.
+Voids a completed sale, reverses inventory, and posts a reversal journal entry.
 
 ### GET /pos/sales/{id}/receipt
 Returns a PDF receipt (Content-Type: application/pdf).
 
 ### GET /pos/daily-summary
-Returns today's sales totals broken down by payment method.
+Returns today's sales totals broken down by payment method. Requires `pos.view-daily-summary`.
+
+### GET /pos/reports/export
+Export a filtered sales report. Query params: `date_from`, `date_to`, `status`, `client_id`. Requires `pos.access`.
 
 ---
 
 ## Accounting
 
-### GET /accounting/chart-of-accounts
-Returns the full hierarchical chart of accounts with balances.
+All accounting endpoints require `permission:accounting.view` unless noted.
 
-### GET /accounting/journal-entries
+### Chart of Accounts
+
+#### GET /accounting/chart-of-accounts
+Returns the full hierarchical chart of accounts with current balances.
+
+#### GET /accounting/chart-of-accounts/flat
+Returns a flat (non-nested) list of all accounts.
+
+#### GET /accounting/chart-of-accounts/pdf
+Exports the chart of accounts as a PDF.
+
+#### POST /accounting/chart-of-accounts
+Create a new account.
+```json
+{
+  "code": "6100",
+  "name": "Marketing Expenses",
+  "type": "expense",
+  "parent_id": null
+}
+```
+`type` options: `asset`, `liability`, `equity`, `revenue`, `expense`
+
+#### PUT /accounting/chart-of-accounts/{id}
+Update an existing account.
+
+#### DELETE /accounting/chart-of-accounts/{id}
+Soft-delete an account (only if it has no journal lines).
+
+---
+
+### Journal Entries
+
+#### GET /accounting/journal-entries
 Query params: `date_from`, `date_to`, `reference_type`
 
-### GET /accounting/income-statement
+All entries are system-generated. Manual journal creation is not exposed.
+
+---
+
+### Financial Reports
+
+#### GET /accounting/reports/income-statement
 Query params: `date_from` (required), `date_to` (required)
 
 **Response:** Revenue accounts vs. expense accounts with totals and net income.
 
-### GET /accounting/balance-sheet
+#### POST /accounting/reports/income-statement/pdf
+Generate and return a PDF income statement. Same body params as GET query params.
+
+#### GET /accounting/reports/balance-sheet
 Query params: `as_of_date` (required)
 
 **Response:** Assets, liabilities, equity sections with totals.
 
-### GET /accounting/cash-flow
+#### POST /accounting/reports/balance-sheet/pdf
+Generate and return a PDF balance sheet.
+
+#### GET /accounting/reports/cash-flow
 Query params: `date_from` (required), `date_to` (required)
 
-### GET /accounting/client-statement
+#### GET /accounting/reports/client-statement
 Query params: `client_id` (required), `date_from`, `date_to`
 
 Returns AR aging with opening balance, charges, payments, closing balance.
+
+#### GET /accounting/reports/client-statement/pdf
+PDF version of the client statement. Same query params as above.
+
+---
+
+### Bank Transactions
+
+#### GET /accounting/bank-transactions
+Returns a ledger of all `business_bank` transactions (sales deposits, expense payments, PO payments) sorted by date with a running balance.
+
+Query params: `date_from`, `date_to`
+
+#### POST /accounting/bank-transactions/export/pdf
+Exports the bank transaction ledger as a PDF.
+
+---
+
+## Expenses
+
+All expense endpoints require `permission:accounting.view`.
+
+### GET /expenses
+Query params: `status` (draft/recorded/voided), `date_from`, `date_to`, `expense_category_id`
+
+### GET /expenses/categories
+List all expense categories with their mapped GL account codes.
+
+### GET /expenses/summary
+Returns expense totals grouped by category for the given date range.
+Query params: `date_from`, `date_to`
+
+### GET /expenses/export/pdf
+Export filtered expenses as a PDF.
+
+### GET /expenses/export/csv
+Export filtered expenses as a CSV file.
+
+### GET /expenses/{id}
+
+### POST /expenses
+Create a manual expense in **draft** status.
+```json
+{
+  "date": "2026-04-12",
+  "payee": "MERALCO",
+  "expense_category_id": 3,
+  "subtotal": 8500.00,
+  "tax_amount": 0.00,
+  "total_amount": 8500.00,
+  "payment_method": "cash",
+  "reference_number": "OR-20260412",
+  "notes": "April electricity bill"
+}
+```
+`payment_method` options: `cash`, `business_bank`
+
+### PUT /expenses/{id}
+Update a draft expense.
+
+### POST /expenses/{id}/confirm
+Confirm a draft expense — posts the journal entry and sets status to **recorded**.
+
+### POST /expenses/{id}/void
+Void a recorded expense — reverses the journal entry and sets status to **voided**. Only applicable to `source = manual` expenses.
+
+### POST /expenses/sync-from-pos
+Syncs POS-related expenses from completed sales (internal use).
 
 ---
 
 ## Dashboard
 
-### GET /dashboard/summary
+### GET /dashboard
+Query params: `sales_trend_days` (optional — `7`, `14`, or `30`; default `30`)
+
 Returns:
 ```json
 {

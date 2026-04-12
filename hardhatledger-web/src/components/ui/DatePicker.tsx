@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useId, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { HiCalendar, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -106,6 +107,8 @@ export function DatePicker({
   const parsed = parseValue(value);
   const today = new Date();
   const [isOpen, setIsOpen] = useState(false);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
+  const [openUpward, setOpenUpward] = useState(false);
   const [viewYear, setViewYear] = useState(parsed?.getFullYear() ?? today.getFullYear());
   const [viewMonth, setViewMonth] = useState(parsed?.getMonth() ?? today.getMonth());
   const containerRef = useRef<HTMLDivElement>(null);
@@ -120,14 +123,70 @@ export function DatePicker({
     if (parsed) { setViewYear(parsed.getFullYear()); setViewMonth(parsed.getMonth()); }
   }, [value]);
 
+  const computePanelStyle = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const GAP = 6;
+    const panelWidth = Math.min(300, window.innerWidth - GAP * 2);
+    const panelHeight = 360;
+    const spaceBelow = window.innerHeight - rect.bottom - GAP;
+    const spaceAbove = rect.top - GAP;
+    const flyUp = spaceBelow < panelHeight && spaceAbove > spaceBelow;
+
+    setOpenUpward(flyUp);
+
+    const left = Math.min(
+      Math.max(GAP, rect.left),
+      Math.max(GAP, window.innerWidth - panelWidth - GAP),
+    );
+
+    if (flyUp) {
+      setPanelStyle({
+        position: 'fixed',
+        bottom: window.innerHeight - rect.top + GAP,
+        left,
+        width: panelWidth,
+        zIndex: 1200,
+      });
+      return;
+    }
+
+    setPanelStyle({
+      position: 'fixed',
+      top: rect.bottom + GAP,
+      left,
+      width: panelWidth,
+      zIndex: 1200,
+    });
+  }, []);
+
   // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
+      const target = e.target as Node;
+      const panelEl = document.getElementById(`${id}-panel`);
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        !(panelEl && panelEl.contains(target))
+      ) {
+        setIsOpen(false);
+      }
     };
     if (isOpen) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [isOpen]);
+  }, [isOpen, id]);
+
+  // Reposition on scroll/resize while open
+  useEffect(() => {
+    if (!isOpen) return;
+    const reposition = () => computePanelStyle();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [isOpen, computePanelStyle]);
 
   const prevMonth = () => {
     if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
@@ -159,7 +218,11 @@ export function DatePicker({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') setIsOpen(false);
-    if ((e.key === 'Enter' || e.key === ' ') && !isOpen) { e.preventDefault(); setIsOpen(true); }
+    if ((e.key === 'Enter' || e.key === ' ') && !isOpen) {
+      e.preventDefault();
+      computePanelStyle();
+      setIsOpen(true);
+    }
   };
 
   const triggerId = `${id}-dp`;
@@ -175,7 +238,11 @@ export function DatePicker({
           type="button"
           id={triggerId}
           className={`neu-datepicker-trigger${!parsed ? ' placeholder' : ''}`}
-          onClick={() => !disabled && setIsOpen((v) => !v)}
+          onClick={() => {
+            if (disabled) return;
+            if (!isOpen) computePanelStyle();
+            setIsOpen((v) => !v);
+          }}
           onKeyDown={handleKeyDown}
           disabled={disabled}
           aria-expanded={isOpen}
@@ -188,8 +255,14 @@ export function DatePicker({
         {name && <input type="hidden" name={name} value={value ?? ''} />}
       </div>
 
-      {isOpen && (
-        <div className="neu-cal-panel" role="dialog" aria-label="Date picker">
+      {isOpen && createPortal(
+        <div
+          id={`${id}-panel`}
+          className={`neu-cal-panel${openUpward ? ' open-upward' : ''}`}
+          role="dialog"
+          aria-label="Date picker"
+          style={panelStyle}
+        >
           {/* Header */}
           <div className="neu-cal-header">
             <button type="button" onClick={prevMonth} aria-label="Previous month">
@@ -232,7 +305,8 @@ export function DatePicker({
             <button type="button" onClick={clear}>Clear</button>
             <button type="button" className="today-btn" onClick={goToday}>Today</button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {error && <p className="neu-error">{error}</p>}

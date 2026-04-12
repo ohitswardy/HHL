@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -58,9 +59,16 @@ class RoleController extends Controller
             'permissions.*' => 'string|exists:permissions,name',
         ]);
 
+        $oldPerms = $role->permissions->pluck('name')->sort()->values()->toArray();
+
         $role->syncPermissions($validated['permissions']);
 
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+        AuditService::log('permissions_updated', 'roles', $role->id,
+            ['permissions' => $oldPerms],
+            ['permissions' => collect($validated['permissions'])->sort()->values()->toArray()]
+        );
 
         return response()->json([
             'data' => [
@@ -91,6 +99,8 @@ class RoleController extends Controller
 
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
+        AuditService::log('created', 'roles', $role->id, null, ['name' => $role->name]);
+
         return response()->json([
             'data' => [
                 'id' => $role->id,
@@ -114,6 +124,8 @@ class RoleController extends Controller
         if ($role->users()->count() > 0) {
             return response()->json(['message' => 'Cannot delete a role that is assigned to users.'], 422);
         }
+
+        AuditService::log('deleted', 'roles', $role->id, ['name' => $role->name], null);
 
         $role->delete();
 

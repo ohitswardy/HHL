@@ -239,8 +239,8 @@ class JournalService
                 'user_id' => Auth::id(),
             ]);
 
-            // Route to Cash in Bank (1020) for business_bank payments, Cash on Hand (1010) otherwise
-            $cashAccountCode = $payment->payment_method === 'business_bank' ? '1020' : '1010';
+            // Route to Cash in Bank (1020) for business_bank and bank_transfer payments, Cash on Hand (1010) otherwise
+            $cashAccountCode = in_array($payment->payment_method, ['business_bank', 'bank_transfer']) ? '1020' : '1010';
             $cashAccount = $this->getAccountByCode($cashAccountCode);
             $arAccount = $this->getAccountByCode('1100');
 

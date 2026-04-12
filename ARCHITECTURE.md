@@ -68,7 +68,9 @@ Controller
 | `PricingService` | Resolves final product price: tier price → base price fallback |
 | `InventoryService` | Transactional stock adjustments + movement recording |
 | `JournalService` | Double-entry accounting entries auto-created from business events |
-| `TransactionNumberService` | Generates unique PO and sale transaction numbers |
+| `TransactionNumberService` | Generates unique PO, sale, and expense transaction numbers |
+| `ExpenseService` | Manages expense lifecycle: draft → confirm → void; handles PO-sourced vs manual expenses |
+| `BankTransactionService` | Aggregates all `business_bank` transactions into a running bank ledger |
 
 ### Authentication
 - Laravel Sanctum issues opaque API tokens on login
@@ -104,11 +106,16 @@ main.tsx
                     ├── Sidebar (navigation)
                     └── <Outlet> (active page)
                           ├── DashboardPage
-                          ├── modules/inventory/pages/*
-                          ├── modules/pos/pages/*
-                          ├── modules/clients/pages/*
-                          ├── modules/suppliers/pages/*
-                          └── modules/accounting/pages/*
+                          ├── modules/inventory/pages/* (Products, Categories, Stock, Movements, TierPricing)
+                          ├── modules/pos/pages/* (POSPage, TransactionsPage, PurchaseOrdersPage)
+                          ├── modules/clients/pages/* (ClientsPage)
+                          ├── modules/suppliers/pages/* (SuppliersPage)
+                          ├── modules/users/pages/* (UsersPage)
+                          ├── modules/roles/pages/* (RoleManagementPage)
+                          └── modules/accounting/pages/* (AccountingDashboard, JournalEntries, Expenses,
+                                                             ChartOfAccounts, BankTransactions,
+                                                             IncomeStatement, BalanceSheet,
+                                                             CashFlow, ClientStatements)
 ```
 
 ### State Management Strategy
@@ -117,6 +124,7 @@ main.tsx
 |---|---|---|
 | Auth (user, token, roles) | Zustand (`authStore`) | Global, persisted to localStorage |
 | POS cart | Zustand (`cartStore`) | Global, in-memory |
+| Theme (light/dark) | Zustand (`themeStore`) | Global, persisted to localStorage via `data-theme` attribute |
 | Server data | React Query | Per-component, cached |
 | Form state | React Hook Form | Local to form |
 
@@ -135,7 +143,32 @@ src/modules/<feature>/
 Shared primitives live in `src/components/ui/` (Button, Input, Card, Modal, Badge, Select, Spinner).
 
 ### Routing
-React Router 7 with nested routes. `ProtectedRoute` wraps all authenticated pages — redirects to `/login` if no token is present.
+React Router 7 with nested routes. `ProtectedRoute` wraps all authenticated pages — redirects to `/login` if no token is present. `ProtectedRoute` accepts optional `permission` and `roles` props to enforce RBAC at the route level.
+
+| Path | Module | Permission Required |
+|---|---|---|
+| `/dashboard` | Dashboard | (auth only) |
+| `/inventory` | Products | `products.view` |
+| `/inventory/categories` | Categories | `categories.view` |
+| `/inventory/stock` | Stock | `inventory.view` |
+| `/inventory/movements` | Movements | `inventory.view` |
+| `/inventory/pricing` | Tier Pricing | `products.edit` |
+| `/pos` | POS | `pos.access` |
+| `/pos/transactions` | Transactions | `pos.access` |
+| `/purchase-orders` | Purchase Orders | `purchase-orders.view` |
+| `/clients` | Clients | `clients.view` |
+| `/suppliers` | Suppliers | `suppliers.view` |
+| `/users` | Users | `users.view` |
+| `/roles` | Roles | `roles.view` |
+| `/accounting` | Accounting Dashboard | `accounting.view` |
+| `/accounting/journal` | Journal Entries | `accounting.view` |
+| `/accounting/expenses` | Expenses | `accounting.view` |
+| `/accounting/chart-of-accounts` | Chart of Accounts | `accounting.view` |
+| `/accounting/bank-transactions` | Bank Transactions | `accounting.view` |
+| `/accounting/reports/income` | Income Statement | `accounting.view` |
+| `/accounting/reports/balance-sheet` | Balance Sheet | `accounting.view` |
+| `/accounting/reports/cash-flow` | Cash Flow | `accounting.view` |
+| `/accounting/reports/client-statements` | Client Statements | `accounting.view` |
 
 ---
 

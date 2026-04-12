@@ -599,6 +599,10 @@ body {
   animation: neuDropUp 0.18s ease-out;
 }
 
+.neu-cal-panel.open-upward {
+  animation: neuDropUp 0.18s ease-out;
+}
+
 /* ── BADGE ────────────────────────────────────────────────────────────── */
 .neu-badge {
   display: inline-flex;

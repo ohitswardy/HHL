@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { HiHome, HiCube, HiShoppingCart, HiDocumentReport, HiUserGroup, HiTruck, HiCollection, HiClipboardList, HiChartBar, HiCash, HiDocumentText, HiShieldCheck, HiTag, HiX, HiKey } from 'react-icons/hi';
+import { HiHome, HiCube, HiShoppingCart, HiDocumentReport, HiUserGroup, HiTruck, HiCollection, HiClipboardList, HiChartBar, HiCash, HiDocumentText, HiShieldCheck, HiTag, HiX, HiKey, HiClipboardCheck } from 'react-icons/hi';
 import { useAuthStore } from '../../stores/authStore';
 
 interface NavItem {
@@ -117,18 +117,26 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             );
           })}
 
-          {hasPermission('users.view') && (
+          {(hasPermission('users.view') || hasPermission('audit-logs.view')) && (
             <div>
               <p className="neu-sidebar-section">Admin</p>
               <div className="space-y-0.5">
-                <NavLink to="/users" onClick={onClose} className={linkClass}>
-                  <HiShieldCheck className="w-5 h-5" />
-                  User Management
-                </NavLink>
+                {hasPermission('users.view') && (
+                  <NavLink to="/users" onClick={onClose} className={linkClass}>
+                    <HiShieldCheck className="w-5 h-5" />
+                    User Management
+                  </NavLink>
+                )}
                 {hasPermission('roles.view') && (
                   <NavLink to="/roles" onClick={onClose} className={linkClass}>
                     <HiKey className="w-5 h-5" />
                     Role Management
+                  </NavLink>
+                )}
+                {hasPermission('audit-logs.view') && (
+                  <NavLink to="/admin/audit-trail" onClick={onClose} className={linkClass}>
+                    <HiClipboardCheck className="w-5 h-5" />
+                    Audit Trail
                   </NavLink>
                 )}
               </div>

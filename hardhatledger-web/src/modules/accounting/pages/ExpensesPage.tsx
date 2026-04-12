@@ -6,6 +6,7 @@ import { Input } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Spinner } from '../../../components/ui/Spinner';
+import { DatePicker } from '../../../components/ui/DatePicker';
 import {
   HiPlus, HiEye, HiSearch, HiX, HiChevronLeft, HiChevronRight,
   HiCurrencyDollar, HiCheckCircle, HiBan, HiFilter, HiRefresh,
@@ -346,17 +347,23 @@ export function ExpensesPage() {
 
           <div className="w-36">
             <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">From</label>
-            <input
-              type="date" className="neu-inline-input w-full"
-              value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            <DatePicker
+              inline
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+              placeholder="From"
+              max={dateTo || undefined}
             />
           </div>
 
           <div className="w-36">
             <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">To</label>
-            <input
-              type="date" className="neu-inline-input w-full"
-              value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+            <DatePicker
+              inline
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+              placeholder="To"
+              min={dateFrom || undefined}
             />
           </div>
 
@@ -724,9 +731,11 @@ function ExpenseFormModal({
           {/* Date */}
           <div>
             <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Date *</label>
-            <input
-              type="date" className="neu-inline-input w-full"
-              value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+            <DatePicker
+              inline
+              value={form.date}
+              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+              placeholder="Select date"
             />
             {errors.date && <p className="text-xs text-red-500 mt-1">{errors.date}</p>}
           </div>

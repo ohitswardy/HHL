@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AccountingController;
+use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankTransactionController;
 use App\Http\Controllers\Api\CategoryController;
@@ -160,6 +161,13 @@ Route::prefix('v1')->group(function () {
             // Bank Transactions
             Route::get('/bank-transactions', [BankTransactionController::class, 'index']);
             Route::post('/bank-transactions/export/pdf', [BankTransactionController::class, 'exportPdf']);
+        });
+
+        // Audit Logs (Super Admin / audit-logs.view)
+        Route::middleware('permission:audit-logs.view')->group(function () {
+            Route::get('/audit-logs', [AuditLogController::class, 'index']);
+            Route::get('/audit-logs/stats', [AuditLogController::class, 'stats']);
+            Route::get('/audit-logs/{auditLog}', [AuditLogController::class, 'show']);
         });
 
         // Expenses

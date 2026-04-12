@@ -4,6 +4,7 @@ import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { Input } from '../../../components/ui/Input';
 import { Spinner } from '../../../components/ui/Spinner';
+import { DatePicker } from '../../../components/ui/DatePicker';
 import {
   HiSearch, HiDownload, HiPencil, HiCheck, HiX,
   HiChevronLeft, HiChevronRight, HiCurrencyDollar,
@@ -209,20 +210,22 @@ export function BankTransactionsPage() {
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">From</label>
-            <input
-              type="date"
-              className="neu-inline-input"
+            <DatePicker
+              inline
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+              placeholder="From"
+              max={dateTo || undefined}
             />
           </div>
           <div>
             <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">To</label>
-            <input
-              type="date"
-              className="neu-inline-input"
+            <DatePicker
+              inline
               value={dateTo}
               onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+              placeholder="To"
+              min={dateFrom || undefined}
             />
           </div>
           <div className="flex-1 min-w-[200px]">

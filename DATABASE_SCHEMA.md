@@ -77,6 +77,7 @@ Managed by Spatie Laravel Permission package.
 | email | VARCHAR NULL | |
 | address | TEXT NULL | |
 | payment_terms | VARCHAR NULL | |
+| is_vatable | BOOLEAN | default false; if true, VAT is split on PO receipt |
 | notes | TEXT NULL | |
 | branch_id | BIGINT NULL | |
 
@@ -147,13 +148,14 @@ Immutable audit trail for every stock change.
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT PK | |
-| po_number | VARCHAR UNIQUE | auto-generated |
+| po_number | VARCHAR UNIQUE | auto-generated (format: PO-YYYYMMDD-0001) |
 | supplier_id | BIGINT FK → suppliers | |
 | user_id | BIGINT FK → users | created by |
 | status | ENUM | `draft`, `sent`, `partial`, `received`, `cancelled` |
 | total_amount | DECIMAL(15,2) | |
 | expected_date | DATE NULL | |
 | received_date | DATE NULL | |
+| payment_method | VARCHAR NULL | e.g., `cash`, `business_bank` |
 | notes | TEXT NULL | |
 | branch_id | BIGINT NULL | |
 
@@ -175,19 +177,20 @@ Immutable audit trail for every stock change.
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT PK | |
-| transaction_number | VARCHAR UNIQUE | indexed, auto-generated |
+| transaction_number | VARCHAR UNIQUE | indexed, auto-generated (format: INV-YYYYMMDD-0001) |
 | client_id | BIGINT FK → clients NULL | null = walk-in |
 | user_id | BIGINT FK → users | cashier |
-| fulfillment_type | ENUM | `delivery`, `pickup` |
-| status | ENUM | `pending`, `completed`, `voided`, `refunded` |
+| fulfillment_type | ENUM | `delivery`, `pickup`; default `pickup` |
+| status | ENUM | `pending`, `completed`, `voided`, `refunded`; default `pending` |
 | subtotal | DECIMAL(15,2) | |
 | discount_amount | DECIMAL(15,2) | |
+| delivery_fee | DECIMAL(15,2) | default 0; charged for delivery fulfillment |
 | tax_amount | DECIMAL(15,2) | |
 | total_amount | DECIMAL(15,2) | |
 | notes | TEXT NULL | |
 | branch_id | BIGINT NULL | |
 
-Computed accessors: `total_paid` (sum of confirmed payments), `balance_due`
+Computed accessors: `total_paid` (sum of confirmed payments), `balance_due` (total_amount − total_paid)
 
 ### `sale_items`
 | Column | Type | Notes |
@@ -205,12 +208,15 @@ Computed accessors: `total_paid` (sum of confirmed payments), `balance_due`
 |---|---|---|
 | id | BIGINT PK | |
 | sales_transaction_id | BIGINT FK → sales_transactions | CASCADE DELETE |
-| payment_method | ENUM | `cash`, `card`, `bank_transfer`, `check`, `credit` |
+| payment_method | ENUM | `cash`, `card`, `bank_transfer`, `check`, `credit`, `business_bank` |
 | amount | DECIMAL(15,2) | |
 | reference_number | VARCHAR NULL | for non-cash payments |
 | status | ENUM | `pending`, `confirmed`, `failed` |
 | paid_at | DATETIME NULL | |
+| due_date | DATE NULL | for `credit` payments; sets the repayment due date |
 | branch_id | BIGINT NULL | |
+
+> `business_bank` payments are posted to account `1020` (Cash in Bank) and appear in the Bank Transaction ledger.
 
 ---
 
@@ -220,9 +226,10 @@ Computed accessors: `total_paid` (sum of confirmed payments), `balance_due`
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGINT PK | |
-| code | VARCHAR UNIQUE | e.g., "1001", "4000" |
+| code | VARCHAR UNIQUE | e.g., "1010", "4020" |
 | name | VARCHAR | |
 | type | ENUM | `asset`, `liability`, `equity`, `revenue`, `expense` |
+| detail_type | VARCHAR NULL | sub-classification (e.g., "cash", "receivable", "payable") |
 | parent_id | BIGINT FK → chart_of_accounts NULL | hierarchical |
 | is_active | BOOLEAN | |
 | branch_id | BIGINT NULL | |
@@ -266,6 +273,58 @@ Must always balance (Σ debit = Σ credit per entry).
 
 ---
 
+## Expenses
+
+### `expense_categories`
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT PK | |
+| name | VARCHAR | e.g., "Operating Expenses", "Utilities" |
+| account_code | VARCHAR FK → chart_of_accounts.code | maps expense to GL account |
+| description | TEXT NULL | |
+| is_active | BOOLEAN | default true |
+| branch_id | BIGINT NULL | |
+
+Default seeded categories and their GL mappings:
+| Category | Account Code |
+|---|---|
+| COGS VATable | 5010 |
+| COGS NonVATable | 5011 |
+| Cost of Sales | 5060 |
+| Operating Expenses | 5020 |
+| Utilities | 5030 |
+| Salaries | 5040 |
+| Discounts Given | 5050 |
+
+### `expenses` *(soft delete)*
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT PK | |
+| expense_number | VARCHAR UNIQUE | auto-generated (format: EXP-YYYYMMDD-0001) |
+| date | DATE | |
+| reference_number | VARCHAR NULL | receipt / OR number |
+| payee | VARCHAR NULL | vendor or payee name |
+| supplier_id | BIGINT FK → suppliers NULL | linked supplier (optional) |
+| expense_category_id | BIGINT FK → expense_categories | determines GL account |
+| subtotal | DECIMAL(15,2) | |
+| tax_amount | DECIMAL(15,2) | default 0 |
+| total_amount | DECIMAL(15,2) | |
+| payment_method | VARCHAR NULL | `cash` or `business_bank` |
+| status | ENUM | `draft`, `recorded`, `voided`; default `draft` |
+| source | VARCHAR | `manual` (default) or `purchase_order` |
+| purchase_order_id | BIGINT FK → purchase_orders NULL | set when source = purchase_order |
+| user_id | BIGINT FK → users | |
+| notes | TEXT NULL | |
+| branch_id | BIGINT NULL | |
+
+**Status lifecycle:**  
+`draft` → `recorded` (journal posted) → `voided` (journal reversed)
+
+> PO-sourced expenses are created automatically on PO receipt. Their accounting is handled by the PO journal entry — confirming them does NOT post a separate journal.
+| branch_id | BIGINT NULL | |
+
+---
+
 ## Audit & System
 
 ### `audit_logs`
@@ -298,6 +357,13 @@ suppliers  >── products ──  inventory_stock
 
 purchase_orders >── purchase_order_items >── products
 suppliers >── purchase_orders
+purchase_orders ──< expenses
+
+expense_categories >── expenses
+chart_of_accounts ──< expense_categories (via account_code)
+
+journal_entries ──< journal_lines >── chart_of_accounts
+```
 
 chart_of_accounts (self-ref) ──< journal_lines >── journal_entries
 
