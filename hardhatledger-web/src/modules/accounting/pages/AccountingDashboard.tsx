@@ -4,13 +4,13 @@ import { HiDocumentReport, HiCash, HiChartBar, HiDocumentText, HiUserGroup, HiCu
 
 const links = [
   { to: '/accounting/journal', label: 'Journal Entries', desc: 'View all double-entry journal records', icon: <HiDocumentReport className="w-8 h-8" />, color: 'text-[var(--n-info)] bg-[var(--n-info-glow)]' },
-  { to: '/accounting/expenses', label: 'Expenses', desc: 'Track and manage all business expenses', icon: <HiCurrencyDollar className="w-8 h-8" />, color: 'text-[var(--n-danger)] bg-red-50' },
-  { to: '/accounting/bank-transactions', label: 'Summary of Business Bank Transactions', desc: 'Track all money in and out of the business bank', icon: <HiLibrary className="w-8 h-8" />, color: 'text-[var(--n-primary)] bg-blue-50' },
+  { to: '/accounting/expenses', label: 'Expenses', desc: 'Track and manage all business expenses', icon: <HiCurrencyDollar className="w-8 h-8" />, color: 'text-[var(--n-danger)] bg-[var(--n-danger-glow)]' },
+  { to: '/accounting/bank-transactions', label: 'Summary of Business Bank Transactions', desc: 'Track all money in and out of the business bank', icon: <HiLibrary className="w-8 h-8" />, color: 'text-[var(--n-info)] bg-[var(--n-info-glow)]' },
   { to: '/accounting/reports/income', label: 'Income Statement', desc: 'Revenue, COGS, and expenses', icon: <HiCash className="w-8 h-8" />, color: 'text-[var(--n-success)] bg-[var(--n-success-glow)]' },
   { to: '/accounting/reports/balance-sheet', label: 'Balance Sheet', desc: 'Assets, liabilities, and equity', icon: <HiChartBar className="w-8 h-8" />, color: 'text-[var(--n-accent)] bg-[var(--n-accent-glow)]' },
   { to: '/accounting/reports/cash-flow', label: 'Cash Flow', desc: 'Inflows and outflows of cash', icon: <HiDocumentText className="w-8 h-8" />, color: 'text-[var(--n-warning)] bg-[var(--n-warning-glow)]' },
   { to: '/accounting/reports/client-statements', label: 'Client Statements', desc: 'Account statements per client', icon: <HiUserGroup className="w-8 h-8" />, color: 'text-[var(--n-text-secondary)] bg-[var(--n-inset)]' },
-  { to: '/accounting/chart-of-accounts', label: 'Chart of Accounts', desc: 'Manage and organize all accounts', icon: <HiClipboardList className="w-8 h-8" />, color: 'text-[var(--n-primary)] bg-blue-50' },
+  { to: '/accounting/chart-of-accounts', label: 'Chart of Accounts', desc: 'Manage and organize all accounts', icon: <HiClipboardList className="w-8 h-8" />, color: 'text-[var(--n-info)] bg-[var(--n-info-glow)]' },
 ];
 
 export function AccountingDashboard() {

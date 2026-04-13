@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Spinner } from '../../components/ui/Spinner';
@@ -143,15 +144,25 @@ interface KpiCardProps {
   trend?: number[];
   delta?: number;
   suffix?: string;
+  onClick?: () => void;
 }
 
-function KpiCard({ label, value, isCurrency, icon, color, glow, trend, delta }: KpiCardProps) {
+function KpiCard({ label, value, isCurrency, icon, color, glow, trend, delta, onClick }: KpiCardProps) {
   const animated = useAnimatedCounter(isCurrency ? Math.round(value) : value);
   const displayValue = isCurrency ? formatCurrency(animated) : animated.toLocaleString();
   const deltaUp = delta !== undefined && delta >= 0;
 
   return (
-    <div className="neu-card" style={{ padding: '1.25rem', position: 'relative', overflow: 'hidden' }}>
+    <div
+      className="neu-card"
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
+      style={{ padding: '1.25rem', position: 'relative', overflow: 'hidden', cursor: onClick ? 'pointer' : 'default', transition: 'transform 0.12s ease, box-shadow 0.12s ease' }}
+      onMouseEnter={onClick ? (e) => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; } : undefined}
+      onMouseLeave={onClick ? (e) => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)'; } : undefined}
+    >
       {/* accent glow blob */}
       <div
         aria-hidden="true"
@@ -267,12 +278,25 @@ interface RecentTx {
 }
 
 function RecentTransactionsPanel({ transactions }: { transactions: RecentTx[] }) {
+  const navigate = useNavigate();
   return (
     <Card className="p-6">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
         <h2 className="neu-section-title" style={{ margin: 0 }}>Recent Transactions</h2>
-        <div className="neu-stat-icon" style={{ color: 'var(--n-accent)', background: 'var(--n-accent-glow)', width: 32, height: 32, borderRadius: 10 }} aria-hidden="true">
-          <HiShoppingCart style={{ width: 16, height: 16 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            className="neu-btn neu-btn-secondary"
+            onClick={() => navigate('/pos/transactions')}
+            style={{ fontSize: '0.72rem', padding: '0.3rem 0.75rem', display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            View All
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <div className="neu-stat-icon" style={{ color: 'var(--n-accent)', background: 'var(--n-accent-glow)', width: 32, height: 32, borderRadius: 10 }} aria-hidden="true">
+            <HiShoppingCart style={{ width: 16, height: 16 }} />
+          </div>
         </div>
       </div>
 
@@ -286,6 +310,10 @@ function RecentTransactionsPanel({ transactions }: { transactions: RecentTx[] })
           {transactions.slice(0, 10).map((tx) => (
             <div
               key={tx.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate('/pos/transactions')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/pos/transactions'); }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -293,7 +321,7 @@ function RecentTransactionsPanel({ transactions }: { transactions: RecentTx[] })
                 padding: '10px 12px',
                 borderRadius: 12,
                 transition: 'background 0.15s ease',
-                cursor: 'default',
+                cursor: 'pointer',
               }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLDivElement).style.background = 'var(--n-table-row-hover)';
@@ -628,6 +656,7 @@ function BusinessOverviewCard({
   totalSuppliers,
   totalCategories,
 }: BusinessOverviewProps) {
+  const navigate = useNavigate();
   const segments: RingSegment[] = [
     { label: 'Products',   value: totalProducts,   color: 'var(--n-accent)' },
     { label: 'Clients',    value: totalClients,    color: '#3B82F6' },
@@ -636,10 +665,10 @@ function BusinessOverviewCard({
   ];
 
   const metrics = [
-    { icon: <HiCube style={{ width: 14, height: 14 }} />,       label: 'Products',   value: totalProducts,   color: 'var(--n-accent)' },
-    { icon: <HiUserGroup style={{ width: 14, height: 14 }} />,  label: 'Clients',    value: totalClients,    color: '#3B82F6' },
-    { icon: <HiTruck style={{ width: 14, height: 14 }} />,      label: 'Suppliers',  value: totalSuppliers,  color: 'var(--n-success)' },
-    { icon: <HiCollection style={{ width: 14, height: 14 }} />, label: 'Categories', value: totalCategories, color: '#8B5CF6' },
+    { icon: <HiCube style={{ width: 14, height: 14 }} />,       label: 'Products',   value: totalProducts,   color: 'var(--n-accent)',   href: '/inventory' },
+    { icon: <HiUserGroup style={{ width: 14, height: 14 }} />,  label: 'Clients',    value: totalClients,    color: '#3B82F6',            href: '/clients' },
+    { icon: <HiTruck style={{ width: 14, height: 14 }} />,      label: 'Suppliers',  value: totalSuppliers,  color: 'var(--n-success)',   href: '/suppliers' },
+    { icon: <HiCollection style={{ width: 14, height: 14 }} />, label: 'Categories', value: totalCategories, color: '#8B5CF6',            href: '/inventory/categories' },
   ];
 
   return (
@@ -668,7 +697,13 @@ function BusinessOverviewCard({
         {metrics.map((item) => (
           <div
             key={item.label}
-            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(item.href)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(item.href); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', borderRadius: 8, padding: '4px 6px', transition: 'background 0.15s ease' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'var(--n-table-row-hover)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
           >
             <div
               className="neu-stat-icon"
@@ -709,9 +744,26 @@ function BusinessOverviewCard({
 
 // ── Summary metric mini-card ───────────────────────────────────────────────
 
-function MetricRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function MetricRow({ label, value, sub, onClick }: { label: string; value: string; sub?: string; onClick?: () => void }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--n-divider)' }}>
+    <div
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '10px 0',
+        borderBottom: '1px solid var(--n-divider)',
+        cursor: onClick ? 'pointer' : 'default',
+        borderRadius: onClick ? 6 : 0,
+        transition: 'background 0.15s ease',
+      }}
+      onMouseEnter={onClick ? (e) => { (e.currentTarget as HTMLDivElement).style.background = 'var(--n-table-row-hover)'; } : undefined}
+      onMouseLeave={onClick ? (e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; } : undefined}
+    >
       <p style={{ fontSize: '0.8rem', color: 'var(--n-text-secondary)', margin: 0 }}>{label}</p>
       <div style={{ textAlign: 'right' }}>
         <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--n-text)', margin: 0, fontFamily: 'var(--n-font-mono)' }}>{value}</p>
@@ -724,6 +776,7 @@ function MetricRow({ label, value, sub }: { label: string; value: string; sub?: 
 // ── Business Health Panel ──────────────────────────────────────────────────
 
 function BusinessHealthPanel({ data }: { data: DashboardSummary }) {
+  const navigate = useNavigate();
   const totalTrend = data.sales_trend.reduce((a, b) => a + b.total, 0);
   const totalOrders = data.sales_trend.reduce((a, b) => a + b.count, 0);
   const avgOrder = totalOrders > 0 ? totalTrend / totalOrders : 0;
@@ -803,10 +856,10 @@ function BusinessHealthPanel({ data }: { data: DashboardSummary }) {
       {/* Metrics */}
       <div style={{ borderTop: '1px solid var(--n-divider)' }}>
         <MetricRow label="7-Day Revenue" value={formatFull(totalTrend)} />
-        <MetricRow label="Total Orders (7d)" value={totalOrders.toLocaleString()} />
+        <MetricRow label="Total Orders (7d)" value={totalOrders.toLocaleString()} onClick={() => navigate('/pos/transactions')} />
         <MetricRow label="Avg. Order Value" value={formatFull(avgOrder)} />
-        <MetricRow label="Pending POs" value={data.pending_pos.toString()} sub={data.pending_pos > 0 ? 'Action needed' : 'All clear'} />
-        <MetricRow label="Low Stock Items" value={data.low_stock_count.toString()} sub={data.low_stock_count > 0 ? 'Review inventory' : 'Healthy'} />
+        <MetricRow label="Pending POs" value={data.pending_pos.toString()} sub={data.pending_pos > 0 ? 'Action needed' : 'All clear'} onClick={() => navigate('/purchase-orders')} />
+        <MetricRow label="Low Stock Items" value={data.low_stock_count.toString()} sub={data.low_stock_count > 0 ? 'Review inventory' : 'Healthy'} onClick={() => navigate('/inventory/stock')} />
       </div>
     </Card>
   );
@@ -955,6 +1008,7 @@ function getSeverity(onHand: number, reorder: number): { color: string; label: s
 }
 
 function LowStockPanel({ items, totalCount }: { items: LowStockItem[]; totalCount: number }) {
+  const navigate = useNavigate();
   const PAGE_SIZE = 4;
   const [page, setPage] = useState(0);
   const totalPages = Math.ceil(items.length / PAGE_SIZE);
@@ -970,15 +1024,27 @@ function LowStockPanel({ items, totalCount }: { items: LowStockItem[]; totalCoun
             {totalCount} product{totalCount !== 1 ? 's' : ''} below reorder level
           </p>
         </div>
-        {totalCount > 0 && (
-          <div
-            className="neu-stat-icon"
-            style={{ width: 36, height: 36, borderRadius: 10, color: 'var(--n-danger)', background: 'var(--n-danger-glow)', flexShrink: 0 }}
-            aria-hidden="true"
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <button
+            className="neu-btn neu-btn-secondary"
+            onClick={() => navigate('/inventory/stock')}
+            style={{ fontSize: '0.72rem', padding: '0.3rem 0.75rem', display: 'flex', alignItems: 'center', gap: 4 }}
           >
-            <HiExclamation style={{ width: 20, height: 20 }} />
-          </div>
-        )}
+            View All
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {totalCount > 0 && (
+            <div
+              className="neu-stat-icon"
+              style={{ width: 36, height: 36, borderRadius: 10, color: 'var(--n-danger)', background: 'var(--n-danger-glow)' }}
+              aria-hidden="true"
+            >
+              <HiExclamation style={{ width: 20, height: 20 }} />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* list — fixed 4 items */}
@@ -998,10 +1064,19 @@ function LowStockPanel({ items, totalCount }: { items: LowStockItem[]; totalCoun
               return (
                 <div
                   key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate('/inventory/stock')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/inventory/stock'); }}
                   style={{
-                    padding: '0.5rem 0',
+                    padding: '0.5rem 6px',
                     borderBottom: i < pageItems.length - 1 ? '1px solid var(--n-divider)' : 'none',
+                    cursor: 'pointer',
+                    borderRadius: 8,
+                    transition: 'background 0.15s ease',
                   }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'var(--n-table-row-hover)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
                 >
                   {/* name + badge */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
@@ -1126,6 +1201,7 @@ function LowStockPanel({ items, totalCount }: { items: LowStockItem[]; totalCoun
 // ── Main Dashboard ─────────────────────────────────────────────────────────
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -1200,6 +1276,7 @@ export function DashboardPage() {
       glow: 'var(--n-success-glow)',
       trend: trendValues,
       delta: salesDelta,
+      onClick: () => navigate('/pos/transactions'),
     },
     {
       label: 'Pending POs',
@@ -1207,6 +1284,7 @@ export function DashboardPage() {
       icon: <HiClipboardList className="w-6 h-6" />,
       color: 'var(--n-info)',
       glow: 'var(--n-info-glow)',
+      onClick: () => navigate('/purchase-orders'),
     },
     {
       label: 'Low Stock Alerts',
@@ -1214,6 +1292,7 @@ export function DashboardPage() {
       icon: <HiExclamationCircle className="w-6 h-6" />,
       color: data.low_stock_count > 0 ? 'var(--n-danger)' : 'var(--n-success)',
       glow: data.low_stock_count > 0 ? 'var(--n-danger-glow)' : 'var(--n-success-glow)',
+      onClick: () => navigate('/inventory/stock'),
     },
     {
       label: 'Total Clients',
@@ -1221,6 +1300,7 @@ export function DashboardPage() {
       icon: <HiUserGroup className="w-6 h-6" />,
       color: '#8B5CF6',
       glow: 'rgba(139,92,246,0.15)',
+      onClick: () => navigate('/clients'),
     },
     {
       label: 'Active Products',
@@ -1228,6 +1308,7 @@ export function DashboardPage() {
       icon: <HiCube className="w-6 h-6" />,
       color: 'var(--n-accent)',
       glow: 'var(--n-accent-glow)',
+      onClick: () => navigate('/inventory'),
     },
   ];
 

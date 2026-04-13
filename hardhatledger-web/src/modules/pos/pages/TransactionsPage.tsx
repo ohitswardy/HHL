@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
-import { DatePicker } from '../../../components/ui/DatePicker';
+import { DateRangePicker } from '../../../components/ui/DatePicker';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
@@ -15,12 +15,17 @@ import { Input } from '../../../components/ui/Input';
 
 type ConfirmAction = { type: 'complete' | 'void'; transaction: SalesTransaction } | null;
 
+/** Returns today's date as YYYY-MM-DD using the browser's local timezone. */
+function localDateStr(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function TransactionsPage() {
   const [transactions, setTransactions] = useState<SalesTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [dateFrom, setDateFrom] = useState(new Date().toISOString().split('T')[0]);
-  const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
+  const [dateFrom, setDateFrom] = useState(localDateStr());
+  const [dateTo, setDateTo] = useState(localDateStr());
   const [statusFilter, setStatusFilter] = useState('');
   const [fulfillmentFilter, setFulfillmentFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
@@ -319,7 +324,7 @@ export function TransactionsPage() {
   };
 
   const setPresetToday = () => {
-    const t = new Date().toISOString().split('T')[0];
+    const t = localDateStr();
     setDateFrom(t); setDateTo(t);
   };
   const setPresetWeek = () => {
@@ -338,6 +343,20 @@ export function TransactionsPage() {
     setDateTo(`${y}-${String(m + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`);
   };
 
+  const activePreset = (() => {
+    const t = localDateStr();
+    if (dateFrom === t && dateTo === t) return 'Today';
+    const now = new Date();
+    const dow = now.getDay();
+    const mon = new Date(now); mon.setDate(now.getDate() - ((dow + 6) % 7));
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    if (dateFrom === localDateStr(mon) && dateTo === localDateStr(sun)) return 'This Week';
+    const y = now.getFullYear(); const mo = now.getMonth();
+    const last = new Date(y, mo + 1, 0).getDate();
+    if (dateFrom === `${y}-${String(mo + 1).padStart(2, '0')}-01` && dateTo === `${y}-${String(mo + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`) return 'This Month';
+    return null;
+  })();
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -351,26 +370,56 @@ export function TransactionsPage() {
       {/* Filters */}
       <Card className="p-4 space-y-3">
         {/* Row 1: Date range + quick presets */}
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>From</label>
-            <DatePicker inline value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        <div className="flex flex-wrap items-center gap-3">
+          <div style={{ flex: '0 0 auto' }}>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date Range</label>
+            <DateRangePicker
+              inline
+              valueFrom={dateFrom}
+              valueTo={dateTo}
+              onChangeFrom={(e) => setDateFrom(e.target.value)}
+              onChangeTo={(e) => setDateTo(e.target.value)}
+            />
           </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>To</label>
-            <DatePicker inline value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </div>
-          <div className="flex gap-1.5 pb-px">
-            {(['Today', 'This Week', 'This Month'] as const).map((label) => (
-              <button
-                key={label}
-                className="neu-btn neu-btn-secondary text-xs"
-                style={{ padding: '0.35rem 0.7rem' }}
-                onClick={label === 'Today' ? setPresetToday : label === 'This Week' ? setPresetWeek : setPresetMonth}
-              >
-                {label}
-              </button>
-            ))}
+          {/* Quick preset toggle */}
+          <div style={{ flex: '0 0 auto', paddingTop: '1.25rem' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                background: 'var(--n-inset)',
+                borderRadius: 10,
+                padding: 3,
+                gap: 2,
+              }}
+            >
+              {(['Today', 'This Week', 'This Month'] as const).map((label) => {
+                const isActive = activePreset === label;
+                return (
+                  <button
+                    key={label}
+                    onClick={label === 'Today' ? setPresetToday : label === 'This Week' ? setPresetWeek : setPresetMonth}
+                    style={{
+                      padding: '0.3rem 0.65rem',
+                      fontSize: '0.72rem',
+                      fontWeight: isActive ? 700 : 500,
+                      fontFamily: 'var(--n-font-mono)',
+                      letterSpacing: '0.04em',
+                      border: 'none',
+                      borderRadius: 7,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      color: isActive ? 'var(--n-accent)' : 'var(--n-text-dim)',
+                      background: isActive ? 'var(--n-surface)' : 'transparent',
+                      boxShadow: isActive ? 'var(--n-shadow-sm)' : 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
