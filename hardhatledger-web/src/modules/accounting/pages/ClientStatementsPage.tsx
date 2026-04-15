@@ -4,7 +4,7 @@ import { DatePicker } from '../../../components/ui/DatePicker';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiPrinter, HiChevronLeft, HiChevronRight, HiDocumentDownload, HiChevronDown, HiSearch, HiX } from 'react-icons/hi';
+import { HiPrinter, HiChevronLeft, HiChevronRight, HiDocumentDownload, HiChevronDown, HiSearch, HiX, HiTable } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Client, SalesTransaction } from '../../../types';
@@ -163,6 +163,119 @@ export function ClientStatementsPage() {
     }
   };
 
+  const buildCSV = (txList: SalesTransaction[], periodLabel: string): string => {
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const rows: string[] = [];
+
+    // Document header
+    rows.push('CLIENT STATEMENT');
+    rows.push(`Client,${esc(selectedClient?.business_name ?? clientId)}`);
+    if (selectedClient?.phone) rows.push(`Phone,${esc(selectedClient.phone)}`);
+    if (selectedClient?.email) rows.push(`Email,${esc(selectedClient.email)}`);
+    if (summary?.client.tier) rows.push(`Tier,${esc(summary.client.tier)}`);
+    rows.push(`Period,${esc(periodLabel)}`);
+    rows.push(`Generated,${esc(dayjs().format('YYYY-MM-DD HH:mm'))}`);
+    rows.push('');
+
+    // Summary block
+    if (summary) {
+      rows.push('SUMMARY');
+      rows.push(`Total Charges (non-voided),${esc('₱' + summary.total_charges.toFixed(2))}`);
+      rows.push(`Total Payments (confirmed),${esc('₱' + summary.total_payments.toFixed(2))}`);
+      rows.push(`Period Balance (charges - payments),${esc('₱' + summary.balance.toFixed(2))}`);
+      rows.push(`Outstanding Balance (all time),${esc('₱' + summary.client.outstanding_balance.toFixed(2))}`);
+      rows.push('');
+    }
+
+    // Column headers
+    rows.push(
+      ['Transaction #', 'Date', 'Time', 'Fulfillment Type', 'Status',
+        'Payment Method(s)', 'Cashier',
+        'Subtotal (₱)', 'Discount (₱)', 'Total (₱)', 'Paid (₱)', 'Balance Due (₱)']
+        .map(esc).join(',')
+    );
+
+    // Rows
+    for (const tx of txList) {
+      const dt = new Date(tx.created_at);
+      const paymentMethods = tx.payments?.map((p) => p.payment_method.replace(/_/g, ' ')).join('; ') || '—';
+      rows.push([
+        tx.transaction_number,
+        dayjs(dt).format('YYYY-MM-DD'),
+        dayjs(dt).format('HH:mm:ss'),
+        tx.fulfillment_type,
+        tx.status,
+        paymentMethods,
+        tx.user?.name || 'Unknown',
+        tx.subtotal.toFixed(2),
+        tx.discount_amount.toFixed(2),
+        tx.total_amount.toFixed(2),
+        tx.total_paid.toFixed(2),
+        tx.balance_due.toFixed(2),
+      ].map(esc).join(','));
+    }
+
+    // BOM for Excel UTF-8 recognition
+    return '\uFEFF' + rows.join('\r\n');
+  };
+
+  const handleExportAllCSV = async () => {
+    if (!clientId) return;
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const res = await api.get('/pos/sales', {
+        params: { client_id: clientId, per_page: 9999, page: 1 },
+      });
+      const allTx: SalesTransaction[] = res.data.data;
+      const csv = buildCSV(allTx, 'All Time');
+      const slug = (selectedClient?.business_name ?? clientId).replace(/\s+/g, '-');
+      downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `${slug}-all-transactions.csv`);
+      toast.success('All transactions exported as CSV');
+    } catch {
+      toast.error('Failed to export CSV');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportFilteredCSV = async () => {
+    if (!clientId) return;
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const effectiveStart = startDate || '2000-01-01';
+      const effectiveEnd = endDate || dayjs().format('YYYY-MM-DD');
+      const params: Record<string, unknown> = {
+        client_id: clientId,
+        per_page: 9999,
+        page: 1,
+      };
+      if (startDate) params.from = startDate;
+      if (endDate) params.to = endDate;
+      if (statusFilter) params.status = statusFilter;
+      if (paymentMethodFilter) params.payment_method = paymentMethodFilter;
+      if (searchTx.trim()) params.search = searchTx.trim();
+      if (minAmount !== '') params.min_amount = minAmount;
+      if (maxAmount !== '') params.max_amount = maxAmount;
+
+      const res = await api.get('/pos/sales', { params });
+      const allTx: SalesTransaction[] = res.data.data;
+      const periodLabel = `${effectiveStart} to ${effectiveEnd}`;
+      const csv = buildCSV(allTx, periodLabel);
+      const slug = (selectedClient?.business_name ?? clientId).replace(/\s+/g, '-');
+      downloadBlob(
+        new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
+        `${slug}-${effectiveStart}-to-${effectiveEnd}.csv`
+      );
+      toast.success('Filtered transactions exported as CSV');
+    } catch {
+      toast.error('Failed to export CSV');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handlePrintReceipt = async (transactionId: number) => {
     try {
       const res = await api.get(`/pos/sales/${transactionId}/receipt`, { responseType: 'blob' });
@@ -206,7 +319,8 @@ export function ClientStatementsPage() {
           </button>
 
           {exportOpen && (
-            <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '13rem' }}>
+            <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
+              <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
               <button onClick={handleExportAll} disabled={exporting} className="neu-dropdown-item">
                 <HiDocumentDownload className="w-4 h-4" />
                 All Transactions (PDF)
@@ -214,6 +328,16 @@ export function ClientStatementsPage() {
               <button onClick={handleExportFiltered} disabled={exporting} className="neu-dropdown-item">
                 <HiDocumentDownload className="w-4 h-4" />
                 Filtered Transactions (PDF)
+              </button>
+              <div className="border-t border-(--n-border) my-1" />
+              <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
+              <button onClick={handleExportAllCSV} disabled={exporting} className="neu-dropdown-item">
+                <HiTable className="w-4 h-4" />
+                All Transactions (CSV)
+              </button>
+              <button onClick={handleExportFilteredCSV} disabled={exporting} className="neu-dropdown-item">
+                <HiTable className="w-4 h-4" />
+                Filtered Transactions (CSV)
               </button>
             </div>
           )}

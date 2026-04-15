@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\PosController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\PurchaseOrderController;
+use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
@@ -147,6 +148,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/chart-of-accounts', [AccountingController::class, 'storeAccount']);
             Route::put('/chart-of-accounts/{id}', [AccountingController::class, 'updateAccount']);
             Route::delete('/chart-of-accounts/{id}', [AccountingController::class, 'destroyAccount']);
+            Route::get('/chart-of-accounts/{id}/ledger', [AccountingController::class, 'accountLedger']);
             Route::get('/journal-entries', [AccountingController::class, 'journalEntries']);
             Route::get('/reports/income-statement', [AccountingController::class, 'incomeStatement']);
             Route::get('/reports/income-statement/pdf', [AccountingController::class, 'incomeStatementPdf']);
@@ -169,6 +171,10 @@ Route::prefix('v1')->group(function () {
             Route::get('/audit-logs/stats', [AuditLogController::class, 'stats']);
             Route::get('/audit-logs/{auditLog}', [AuditLogController::class, 'show']);
         });
+
+        // Settings (all authenticated users can read; admins can update)
+        Route::get('/settings', [SettingController::class, 'index']);
+        Route::middleware('permission:accounting.view')->put('/settings/{key}', [SettingController::class, 'update']);
 
         // Expenses
         Route::prefix('expenses')->middleware('permission:accounting.view')->group(function () {

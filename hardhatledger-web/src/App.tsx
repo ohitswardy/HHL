@@ -23,6 +23,7 @@ import { ClientStatementsPage } from './modules/accounting/pages/ClientStatement
 import { ExpensesPage } from './modules/accounting/pages/ExpensesPage';
 import { ChartOfAccountsPage } from './modules/accounting/pages/ChartOfAccountsPage';
 import { BankTransactionsPage } from './modules/accounting/pages/BankTransactionsPage';
+import { TaxSettingsPage } from './modules/accounting/pages/TaxSettingsPage';
 import { UsersPage } from './modules/users/pages/UsersPage';
 import { RoleManagementPage } from './modules/roles/pages/RoleManagementPage';
 import { AuditTrailPage } from './modules/audit/pages/AuditTrailPage';
@@ -74,6 +75,7 @@ function App() {
           <Route path="/accounting/reports/client-statements" element={<ProtectedRoute permission="accounting.view"><ClientStatementsPage /></ProtectedRoute>} />
           <Route path="/accounting/chart-of-accounts" element={<ProtectedRoute permission="accounting.view"><ChartOfAccountsPage /></ProtectedRoute>} />
           <Route path="/accounting/bank-transactions" element={<ProtectedRoute permission="accounting.view"><BankTransactionsPage /></ProtectedRoute>} />
+          <Route path="/accounting/tax-settings" element={<ProtectedRoute permission="accounting.view"><TaxSettingsPage /></ProtectedRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

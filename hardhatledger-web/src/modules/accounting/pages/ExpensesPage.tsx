@@ -100,6 +100,7 @@ export function ExpensesPage() {
   /* ── master data ── */
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [systemTaxRate, setSystemTaxRate] = useState<number>(12);
 
   /* ── modals ── */
   const [createOpen, setCreateOpen] = useState(false);
@@ -115,6 +116,10 @@ export function ExpensesPage() {
   useEffect(() => {
     api.get('/expenses/categories').then((r) => setCategories(r.data.data));
     api.get('/suppliers', { params: { per_page: 200 } }).then((r) => setSuppliers(r.data.data));
+    api.get('/settings').then((r) => {
+      const rate = parseFloat(r.data.data?.tax_rate?.value ?? '12');
+      if (!isNaN(rate)) setSystemTaxRate(rate);
+    });
   }, []);
 
   /* ── fetch list ── */
@@ -490,6 +495,7 @@ export function ExpensesPage() {
         <ExpenseFormModal
           categories={categories}
           suppliers={suppliers}
+          systemTaxRate={systemTaxRate}
           onClose={() => setCreateOpen(false)}
           onSaved={() => { setCreateOpen(false); fetchExpenses(); }}
         />
@@ -501,6 +507,7 @@ export function ExpensesPage() {
           expense={editExpense}
           categories={categories}
           suppliers={suppliers}
+          systemTaxRate={systemTaxRate}
           onClose={() => setEditExpense(null)}
           onSaved={() => { setEditExpense(null); fetchExpenses(); }}
         />
@@ -587,17 +594,21 @@ export function ExpensesPage() {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 function ExpenseFormModal({
-  expense, categories, suppliers, onClose, onSaved,
+  expense, categories, suppliers, systemTaxRate, onClose, onSaved,
 }: {
   expense?: Expense | null;
   categories: ExpenseCategory[];
   suppliers: Supplier[];
+  systemTaxRate: number;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isEdit = !!expense;
   const isDraft = expense?.status === 'draft';
   const isRecordedPO = expense?.source === 'purchase_order' && expense?.status === 'recorded';
+
+  // Derive initial VAT checkbox state: if existing tax_amount > 0, it's VATable
+  const initialIsVatable = expense ? (expense.tax_amount ?? 0) > 0 : false;
 
   const [form, setForm] = useState({
     date: expense?.date ?? dayjs().format('YYYY-MM-DD'),
@@ -606,14 +617,16 @@ function ExpenseFormModal({
     supplier_id: (expense?.supplier_id ?? '') as number | '',
     expense_category_id: (expense?.expense_category_id ?? '') as number | '',
     subtotal: expense?.subtotal?.toString() ?? '',
-    tax_amount: expense?.tax_amount?.toString() ?? '',
     notes: expense?.notes ?? '',
     payment_method: expense?.payment_method ?? 'cash',
+    is_vatable: initialIsVatable,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  const computedTotal = (parseFloat(form.subtotal) || 0) + (parseFloat(form.tax_amount) || 0);
+  const subtotalNum = parseFloat(form.subtotal) || 0;
+  const taxAmount = form.is_vatable ? parseFloat((subtotalNum * (systemTaxRate / 100)).toFixed(2)) : 0;
+  const computedTotal = subtotalNum + taxAmount;
 
   const handleSupplierChange = (supplierId: number | '') => {
     const supplier = suppliers.find((s) => s.id === supplierId);
@@ -639,8 +652,8 @@ function ExpenseFormModal({
     payee: form.payee.trim(),
     supplier_id: form.supplier_id || null,
     expense_category_id: form.expense_category_id,
-    subtotal: parseFloat(form.subtotal),
-    tax_amount: parseFloat(form.tax_amount) || 0,
+    subtotal: subtotalNum,
+    tax_amount: taxAmount,
     total_amount: computedTotal,
     notes: form.notes || null,
     payment_method: form.payment_method,
@@ -810,20 +823,24 @@ function ExpenseFormModal({
             {errors.subtotal && <p className="text-xs text-red-500 mt-1">{errors.subtotal}</p>}
           </div>
 
-          {/* Tax */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">
+          {/* VAT checkbox */}
+          <div className="flex flex-col justify-center">
+            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-2">
               Sales Tax / VAT
-              {(isDraft || isRecordedPO) && (
-                <span className="ml-2 text-amber-600 font-normal">(edit here)</span>
-              )}
             </label>
-            <Input
-              type="number" step="0.01" min="0"
-              value={form.tax_amount}
-              onChange={(e) => setForm((f) => ({ ...f, tax_amount: e.target.value }))}
-              placeholder="0.00"
-            />
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.is_vatable}
+                onChange={(e) => setForm((f) => ({ ...f, is_vatable: e.target.checked }))}
+                className="w-5 h-5 rounded accent-amber-500 cursor-pointer"
+              />
+              <span className="text-sm font-medium text-[var(--n-text)]">
+                {form.is_vatable
+                  ? <span className="text-amber-600">VATable — {systemTaxRate}% applied (₱{fmt(taxAmount)})</span>
+                  : <span className="text-[var(--n-text-secondary)]">Non-VAT expense</span>}
+              </span>
+            </label>
           </div>
 
           {/* Computed Total */}

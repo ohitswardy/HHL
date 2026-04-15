@@ -143,6 +143,101 @@ class AccountingController extends Controller
         ]);
     }
 
+    /**
+     * Account ledger: all journal lines for a specific account with running balance.
+     *
+     * GET /accounting/chart-of-accounts/{id}/ledger
+     *   ?from=YYYY-MM-DD  (optional — filter start date)
+     *   ?to=YYYY-MM-DD    (optional — filter end date)
+     *   ?per_page=50
+     *   ?page=1
+     */
+    public function accountLedger(Request $request, int $id): JsonResponse
+    {
+        $account = ChartOfAccount::findOrFail($id);
+
+        $from    = $request->get('from');
+        $to      = $request->get('to');
+        $perPage = min((int) $request->get('per_page', 50), 200);
+        $page    = max(1, (int) $request->get('page', 1));
+
+        // Debit-normal accounts (assets & expenses): balance = debits − credits
+        $isDebitNormal = in_array($account->type, ['asset', 'expense']);
+
+        // ── Opening balance: all lines BEFORE the $from date ──────────────────
+        $obQuery = JournalLine::where('account_id', $id)
+            ->whereHas('journalEntry', fn ($q) => $q->whereNull('deleted_at'));
+
+        if ($from) {
+            $obQuery->whereHas('journalEntry', fn ($q) => $q->whereDate('date', '<', $from));
+        }
+
+        $obDebit   = (float) $obQuery->sum('debit');
+        $obCredit  = (float) $obQuery->sum('credit');
+        $openingBalance = $isDebitNormal
+            ? ($obDebit  - $obCredit)
+            : ($obCredit - $obDebit);
+
+        // ── Fetch all lines in the requested date window ──────────────────────
+        $linesQuery = JournalLine::where('account_id', $id)
+            ->with(['journalEntry.user'])
+            ->whereHas('journalEntry', function ($q) use ($from, $to) {
+                $q->whereNull('deleted_at');
+                if ($from) $q->whereDate('date', '>=', $from);
+                if ($to)   $q->whereDate('date', '<=', $to);
+            });
+
+        // Sort by entry date then line id for chronological order
+        $allLines = $linesQuery->get()->sortBy([
+            [fn ($l) => $l->journalEntry->date, 'asc'],
+            ['id', 'asc'],
+        ])->values();
+
+        // ── Compute running balance per line ───────────────────────────────────
+        $runningBalance = $openingBalance;
+        $mapped = $allLines->map(function ($line) use (&$runningBalance, $isDebitNormal) {
+            $debit  = (float) $line->debit;
+            $credit = (float) $line->credit;
+
+            $runningBalance += $isDebitNormal
+                ? ($debit  - $credit)
+                : ($credit - $debit);
+
+            $entry = $line->journalEntry;
+
+            return [
+                'id'               => $line->id,
+                'journal_entry_id' => $line->journal_entry_id,
+                'date'             => $entry->date,
+                'description'      => $entry->description,
+                'reference_type'   => $entry->reference_type,
+                'reference_id'     => $entry->reference_id,
+                'debit'            => $debit,
+                'credit'           => $credit,
+                'running_balance'  => round($runningBalance, 2),
+                'recorded_by'      => $entry->user?->name,
+            ];
+        });
+
+        // ── Manual pagination ─────────────────────────────────────────────────
+        $total    = $mapped->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $page     = min($page, $lastPage);
+        $slice    = $mapped->slice(($page - 1) * $perPage, $perPage)->values();
+
+        return response()->json([
+            'account'         => new ChartOfAccountResource($account),
+            'opening_balance' => round($openingBalance, 2),
+            'data'            => $slice,
+            'meta'            => [
+                'current_page' => $page,
+                'last_page'    => $lastPage,
+                'per_page'     => $perPage,
+                'total'        => $total,
+            ],
+        ]);
+    }
+
     public function incomeStatement(Request $request): JsonResponse
     {
         $request->validate([

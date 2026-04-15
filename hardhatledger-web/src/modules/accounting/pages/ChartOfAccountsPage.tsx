@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Spinner } from '../../../components/ui/Spinner';
 import api from '../../../lib/api';
-import { HiPlus, HiPencil, HiTrash, HiDownload, HiPrinter, HiDocumentDuplicate, HiSearch, HiX } from 'react-icons/hi';
+import { HiPlus, HiPencil, HiTrash, HiDownload, HiPrinter, HiDocumentDuplicate, HiSearch, HiX, HiBookOpen, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 import type { ChartOfAccount } from '../../../types';
+import dayjs from 'dayjs';
 
 /* ═══════════════════════════════════════════════════════════
    Constants
@@ -272,6 +273,285 @@ function AccountFormModal({ account, parentOptions, onSave, onClose, saving }: A
             </Button>
           </div>
         </form>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Account Ledger Modal — audit trail per account
+   ═══════════════════════════════════════════════════════════ */
+
+interface LedgerLine {
+  id: number;
+  journal_entry_id: number;
+  date: string;
+  description: string;
+  reference_type: string | null;
+  reference_id: number | null;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  recorded_by: string | null;
+}
+
+interface LedgerMeta {
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+}
+
+const REFERENCE_LABELS: Record<string, string> = {
+  sale: 'Sale',
+  sale_reversal: 'Sale Reversal',
+  expense: 'Expense',
+  expense_reversal: 'Expense Reversal',
+  purchase: 'Purchase',
+  purchase_order: 'Purchase Order',
+  payment: 'Payment',
+  journal: 'Journal',
+};
+
+const TYPE_BADGE: Record<ChartOfAccount['type'], { bg: string; text: string }> = {
+  asset:     { bg: 'bg-blue-100',   text: 'text-blue-700' },
+  liability: { bg: 'bg-red-100',    text: 'text-red-700' },
+  equity:    { bg: 'bg-purple-100', text: 'text-purple-700' },
+  revenue:   { bg: 'bg-green-100',  text: 'text-green-700' },
+  expense:   { bg: 'bg-amber-100',  text: 'text-amber-700' },
+};
+
+function AccountLedgerModal({
+  account,
+  onClose,
+}: {
+  account: ChartOfAccount;
+  onClose: () => void;
+}) {
+  const today = dayjs().format('YYYY-MM-DD');
+  const startOfYear = dayjs().startOf('year').format('YYYY-MM-DD');
+
+  const [from, setFrom] = useState(startOfYear);
+  const [to, setTo] = useState(today);
+  const [page, setPage] = useState(1);
+  const [lines, setLines] = useState<LedgerLine[]>([]);
+  const [meta, setMeta] = useState<LedgerMeta>({ current_page: 1, last_page: 1, per_page: 50, total: 0 });
+  const [openingBalance, setOpeningBalance] = useState<number>(0);
+  const [loading, setLoading] = useState(false);
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  const fetchLedger = useCallback(async (p = 1) => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/accounting/chart-of-accounts/${account.id}/ledger`, {
+        params: { from, to, page: p, per_page: 50 },
+      });
+      setLines(res.data.data);
+      setMeta(res.data.meta);
+      setOpeningBalance(res.data.opening_balance);
+      setPage(p);
+      tableRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      setLoading(false);
+    }
+  }, [account.id, from, to]);
+
+  useEffect(() => { fetchLedger(1); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const badge = TYPE_BADGE[account.type];
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n));
+
+  const balanceColor = (b: number) =>
+    b >= 0 ? 'text-[var(--n-success)]' : 'text-[var(--n-danger)]';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <Card
+        className="w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Header ── */}
+        <div className="flex items-start justify-between p-5 border-b" style={{ borderColor: 'var(--n-border)' }}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-[var(--n-info-glow)] text-[var(--n-info)] shrink-0">
+              <HiBookOpen className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--n-inset)', color: 'var(--n-text-secondary)' }}>
+                  {account.code}
+                </span>
+                <h2 className="neu-section-title truncate">{account.name}</h2>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${badge.bg} ${badge.text}`}>
+                  {account.type}
+                </span>
+              </div>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--n-text-secondary)' }}>
+                Account Ledger — transactions that affect this account
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-[var(--n-inset)] shrink-0 ml-3" style={{ color: 'var(--n-text-secondary)' }}>
+            <HiX className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* ── Date filter bar ── */}
+        <div className="flex flex-wrap items-end gap-3 px-5 py-3 border-b" style={{ borderColor: 'var(--n-border)', background: 'var(--n-inset)' }}>
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>From</label>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="neu-inline-input text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--n-text-secondary)' }}>To</label>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="neu-inline-input text-sm"
+            />
+          </div>
+          <Button size="sm" variant="secondary" onClick={() => fetchLedger(1)} disabled={loading}>
+            {loading ? <Spinner size="sm" /> : 'Apply'}
+          </Button>
+          <div className="ml-auto text-right">
+            <p className="text-xs font-semibold" style={{ color: 'var(--n-text-secondary)' }}>Current Balance</p>
+            <p className={`text-lg font-bold tabular-nums ${balanceColor(account.balance)}`}>
+              {account.balance < 0 ? '−' : ''}₱{fmt(account.balance)}
+            </p>
+          </div>
+        </div>
+
+        {/* ── Table ── */}
+        <div className="flex-1 overflow-y-auto" ref={tableRef}>
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Spinner size="lg" />
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0" style={{ background: 'var(--n-surface)', zIndex: 1 }}>
+                <tr className="border-b-2" style={{ borderColor: 'var(--n-border)' }}>
+                  <th className="text-left p-3 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--n-text-secondary)', width: '90px' }}>Date</th>
+                  <th className="text-left p-3 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--n-text-secondary)', width: '110px' }}>Ref Type</th>
+                  <th className="text-left p-3 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--n-text-secondary)' }}>Description</th>
+                  <th className="text-left p-3 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--n-text-secondary)', width: '90px' }}>By</th>
+                  <th className="text-right p-3 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--n-text-secondary)', width: '100px' }}>Debit</th>
+                  <th className="text-right p-3 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--n-text-secondary)', width: '100px' }}>Credit</th>
+                  <th className="text-right p-3 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--n-text-secondary)', width: '120px' }}>Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Opening balance row */}
+                {page === 1 && (
+                  <tr style={{ background: 'var(--n-inset)' }}>
+                    <td className="p-3 text-xs font-medium" style={{ color: 'var(--n-text-secondary)' }}>
+                      {from ? dayjs(from).subtract(1, 'day').format('MMM D') : 'Start'}
+                    </td>
+                    <td className="p-3" colSpan={5}>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: 'var(--n-border)', color: 'var(--n-text-secondary)' }}>
+                        Opening Balance
+                      </span>
+                    </td>
+                    <td className={`p-3 text-right tabular-nums font-bold text-sm ${balanceColor(openingBalance)}`}>
+                      {openingBalance < 0 ? '−' : ''}₱{fmt(openingBalance)}
+                    </td>
+                  </tr>
+                )}
+
+                {lines.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-16 text-center text-sm" style={{ color: 'var(--n-text-secondary)' }}>
+                      No transactions found for this period.
+                    </td>
+                  </tr>
+                )}
+
+                {lines.map((line) => (
+                  <tr
+                    key={line.id}
+                    className="border-b hover:bg-[var(--n-inset)] transition-colors"
+                    style={{ borderColor: 'var(--n-border)' }}
+                  >
+                    <td className="p-3 text-xs tabular-nums" style={{ color: 'var(--n-text-secondary)' }}>
+                      {dayjs(line.date).format('MMM D, YYYY')}
+                    </td>
+                    <td className="p-3">
+                      {line.reference_type ? (
+                        <span className="text-xs font-medium px-2 py-0.5 rounded bg-[var(--n-inset)]" style={{ color: 'var(--n-text-secondary)' }}>
+                          {REFERENCE_LABELS[line.reference_type] ?? line.reference_type}
+                          {line.reference_id ? ` #${line.reference_id}` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-xs" style={{ color: 'var(--n-text-dim)' }}>—</span>
+                      )}
+                    </td>
+                    <td className="p-3 font-medium" style={{ color: 'var(--n-text)' }}>
+                      {line.description}
+                    </td>
+                    <td className="p-3 text-xs" style={{ color: 'var(--n-text-secondary)' }}>
+                      {line.recorded_by ?? '—'}
+                    </td>
+                    <td className="p-3 text-right tabular-nums text-sm">
+                      {line.debit > 0 ? (
+                        <span className="text-[var(--n-info)] font-medium">₱{fmt(line.debit)}</span>
+                      ) : (
+                        <span style={{ color: 'var(--n-text-dim)' }}>—</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-right tabular-nums text-sm">
+                      {line.credit > 0 ? (
+                        <span className="text-[var(--n-danger)] font-medium">₱{fmt(line.credit)}</span>
+                      ) : (
+                        <span style={{ color: 'var(--n-text-dim)' }}>—</span>
+                      )}
+                    </td>
+                    <td className={`p-3 text-right tabular-nums font-semibold text-sm ${balanceColor(line.running_balance)}`}>
+                      {line.running_balance < 0 ? '−' : ''}₱{fmt(line.running_balance)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* ── Footer: summary + pagination ── */}
+        <div className="flex items-center justify-between gap-3 px-5 py-3 border-t flex-wrap" style={{ borderColor: 'var(--n-border)', background: 'var(--n-inset)' }}>
+          <p className="text-xs" style={{ color: 'var(--n-text-secondary)' }}>
+            {meta.total > 0
+              ? `Showing ${(meta.current_page - 1) * meta.per_page + 1}–${Math.min(meta.current_page * meta.per_page, meta.total)} of ${meta.total} transaction${meta.total !== 1 ? 's' : ''}`
+              : 'No transactions'}
+          </p>
+
+          {meta.last_page > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => fetchLedger(page - 1)}
+                disabled={page === 1 || loading}
+                className="neu-pagination-btn"
+              >
+                <HiChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs px-2" style={{ color: 'var(--n-text-secondary)' }}>
+                Page {meta.current_page} of {meta.last_page}
+              </span>
+              <button
+                onClick={() => fetchLedger(page + 1)}
+                disabled={page === meta.last_page || loading}
+                className="neu-pagination-btn"
+              >
+                <HiChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </Card>
     </div>
@@ -557,6 +837,7 @@ export function ChartOfAccountsPage() {
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<ChartOfAccount | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [ledgerAccount, setLedgerAccount] = useState<ChartOfAccount | null>(null);
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
@@ -799,7 +1080,7 @@ export function ChartOfAccountsPage() {
                   <th className="text-left p-3 font-semibold" style={{ color: 'var(--n-text-secondary)' }}>Account Type</th>
                   <th className="text-left p-3 font-semibold" style={{ color: 'var(--n-text-secondary)' }}>Detail Type</th>
                   <th className="text-right p-3 font-semibold" style={{ color: 'var(--n-text-secondary)' }}>Balance</th>
-                  <th className="p-3 w-24"></th>
+                  <th className="p-3 w-32"></th>
                 </tr>
               </thead>
               <tbody>
@@ -841,6 +1122,14 @@ export function ChartOfAccountsPage() {
                         <td className="p-3">
                           <div className="flex justify-end gap-1">
                             <button
+                              onClick={() => setLedgerAccount(a)}
+                              className="p-1.5 rounded hover:bg-blue-50 transition-colors"
+                              style={{ color: 'var(--n-info)' }}
+                              title="View ledger / audit trail"
+                            >
+                              <HiBookOpen className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => {
                                 setFormAccount(a);
                                 setShowForm(true);
@@ -878,6 +1167,14 @@ export function ChartOfAccountsPage() {
           </div>
         )}
       </Card>
+
+      {/* Account Ledger Modal */}
+      {ledgerAccount && (
+        <AccountLedgerModal
+          account={ledgerAccount}
+          onClose={() => setLedgerAccount(null)}
+        />
+      )}
 
       {/* Add/Edit Modal */}
       {showForm && (

@@ -7,6 +7,7 @@ use App\Models\JournalEntry;
 use App\Models\Payment;
 use App\Models\PurchaseOrder;
 use App\Models\SalesTransaction;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -20,6 +21,16 @@ class JournalService
     private function findAccountByCode(string $code): ?ChartOfAccount
     {
         return ChartOfAccount::where('code', $code)->first();
+    }
+
+    /**
+     * Return the VAT divisor (e.g. 1.12 for 12%) from the settings table.
+     * Falls back to 1.12 if the setting is missing or invalid.
+     */
+    private function vatDivisor(): float
+    {
+        $rate = (float) Setting::get('tax_rate', 12);
+        return 1 + ($rate / 100);
     }
 
     /**
@@ -105,10 +116,10 @@ class JournalService
             $isVatable = $this->isSaleVatable($sale);
 
             if ($isVatable) {
-                // VATable sale: total is inclusive of 12% VAT
-                // Revenue = total ÷ 1.12,  VAT Output = total - revenue
+                // VATable sale: total is inclusive of VAT
+                // Revenue = total ÷ vatDivisor,  VAT Output = total - revenue
                 $revenueAccount = $this->getAccountByCode('4020'); // Sales (VATable / NonVAT)
-                $revenueAmount  = round($totalAmount / 1.12, 2);
+                $revenueAmount  = round($totalAmount / $this->vatDivisor(), 2);
                 $vatAmount      = round($totalAmount - $revenueAmount, 2);
 
                 // CR: Sales Revenue (net of VAT)
@@ -186,9 +197,9 @@ class JournalService
             $isVatable = $po->supplier && ($po->supplier->is_vatable ?? false);
 
             if ($isVatable) {
-                // VATable Purchase: invoice includes 12% VAT
-                // Inventory cost = total ÷ 1.12,   Input VAT = total - cost
-                $inventoryCost = round($total / 1.12, 2);
+                // VATable Purchase: invoice includes VAT
+                // Inventory cost = total ÷ vatDivisor,   Input VAT = total - cost
+                $inventoryCost = round($total / $this->vatDivisor(), 2);
                 $inputVat      = round($total - $inventoryCost, 2);
 
                 // DR: Inventory (net cost)
