@@ -57,7 +57,8 @@ class PosController extends Controller
             $deliveryFee = $request->fulfillment_type === 'delivery'
                 ? (float) ($request->delivery_fee ?? 0)
                 : 0;
-            $totalAmount = $subtotal - $discountAmount + $deliveryFee;
+            $taxAmount   = (float) ($request->tax_amount ?? 0);
+            $totalAmount = $subtotal - $discountAmount + $deliveryFee + $taxAmount;
 
             // Determine sale status: pending if any payments are deferred
             // business_bank is deferred — it requires confirmation that the cheque/transfer was received
@@ -76,7 +77,7 @@ class PosController extends Controller
                 'subtotal'           => $subtotal,
                 'discount_amount'    => $discountAmount,
                 'delivery_fee'       => $deliveryFee,
-                'tax_amount'         => 0,
+                'tax_amount'         => $taxAmount,
                 'total_amount'       => $totalAmount,
                 'notes'              => $request->notes,
             ]);

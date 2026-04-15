@@ -136,7 +136,14 @@
             @forelse($transactions as $tx)
             <tr class="{{ $tx->status === 'voided' ? 'voided' : '' }}">
                 <td>{{ $tx->created_at->format('m/d/Y') }}</td>
-                <td><span class="inv">Invoice No.{{ $tx->transaction_number }}</span></td>
+                <td>
+                    <span class="inv">Invoice No.{{ $tx->transaction_number }}</span>
+                    @if($tx->tax_amount > 0)
+                        <span style="font-size:8.5px; color:#1a6b9e; margin-left:6px;">
+                            incl. VAT ₱{{ number_format($tx->tax_amount, 2) }}
+                        </span>
+                    @endif
+                </td>
                 <td class="right">{{ number_format($tx->total_amount, 2) }}</td>
                 <td class="right">{{ number_format($tx->payments->where('status','confirmed')->sum('amount'), 2) }}</td>
             </tr>

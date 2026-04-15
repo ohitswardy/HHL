@@ -787,6 +787,12 @@ export function TransactionsPage() {
                 <span>₱{viewingTx.delivery_fee.toFixed(2)}</span>
               </div>
             )}
+            {viewingTx.tax_amount > 0 && (
+              <div className="flex justify-between" style={{ color: 'var(--n-info)' }}>
+                <span>VAT / Sales Tax</span>
+                <span>+₱{viewingTx.tax_amount.toFixed(2)}</span>
+              </div>
+            )}
             <div
               className="flex justify-between font-bold text-base pt-1.5"
               style={{ borderTop: '1px solid var(--n-divider)', fontFamily: 'var(--n-font-display)' }}

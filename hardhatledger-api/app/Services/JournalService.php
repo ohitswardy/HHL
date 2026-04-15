@@ -113,14 +113,24 @@ class JournalService
             }
 
             // ── Revenue + VAT recognition ──
-            $isVatable = $this->isSaleVatable($sale);
+            // Explicit POS tax (cashier checked "Apply VAT") takes precedence over
+            // the tier-based heuristic. When tax_amount > 0 it is always a VATable sale.
+            $explicitTax = (float) $sale->tax_amount;
+            $isVatable   = $explicitTax > 0 ? true : $this->isSaleVatable($sale);
 
             if ($isVatable) {
-                // VATable sale: total is inclusive of VAT
-                // Revenue = total ÷ vatDivisor,  VAT Output = total - revenue
-                $revenueAccount = $this->getAccountByCode('4020'); // Sales (VATable / NonVAT)
-                $revenueAmount  = round($totalAmount / $this->vatDivisor(), 2);
-                $vatAmount      = round($totalAmount - $revenueAmount, 2);
+                $revenueAccount = $this->getAccountByCode('4020'); // Sales — VATable
+
+                if ($explicitTax > 0) {
+                    // POS-level add-on tax: price was exclusive of VAT, tax was stacked on top.
+                    // Revenue = total − explicit tax,  VAT Output = explicit tax amount.
+                    $revenueAmount = round($totalAmount - $explicitTax, 2);
+                    $vatAmount     = $explicitTax;
+                } else {
+                    // Tier-based VATable: prices are VAT-inclusive — extract VAT by dividing.
+                    $revenueAmount = round($totalAmount / $this->vatDivisor(), 2);
+                    $vatAmount     = round($totalAmount - $revenueAmount, 2);
+                }
 
                 // CR: Sales Revenue (net of VAT)
                 $entry->lines()->create([
@@ -140,7 +150,7 @@ class JournalService
                 }
             } else {
                 // NON-VAT sale: full amount is revenue, no VAT component
-                $revenueAccount = $this->getAccountByCode('4010'); // Sales (NON-VAT)
+                $revenueAccount = $this->getAccountByCode('4010'); // Sales — NON-VAT
 
                 $entry->lines()->create([
                     'account_id' => $revenueAccount->id,

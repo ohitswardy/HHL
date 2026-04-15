@@ -99,12 +99,13 @@
             <tr>
                 <th style="width: 12%">Transaction #</th>
                 <th style="width: 13%">Date & Time</th>
-                <th style="width: 14%">Client</th>
-                <th style="width: 8%">Type</th>
-                <th style="width: 8%">Status</th>
-                <th style="width: 9%" class="text-right">Subtotal</th>
-                <th style="width: 7%" class="text-right">Discount</th>
-                <th style="width: 9%" class="text-right">Total</th>
+                <th style="width: 13%">Client</th>
+                <th style="width: 7%">Type</th>
+                <th style="width: 7%">Status</th>
+                <th style="width: 8%" class="text-right">Subtotal</th>
+                <th style="width: 6%" class="text-right">Discount</th>
+                <th style="width: 6%" class="text-right">VAT</th>
+                <th style="width: 8%" class="text-right">Total</th>
                 <th style="width: 20%">Notes</th>
             </tr>
         </thead>
@@ -118,6 +119,9 @@
                 <td class="text-center">{{ ucfirst($sale->status) }}</td>
                 <td class="text-right">{{ number_format($sale->subtotal, 2) }}</td>
                 <td class="text-right">{{ number_format($sale->discount_amount, 2) }}</td>
+                <td class="text-right" style="{{ $sale->tax_amount > 0 ? 'color:#1a6b9e;font-weight:bold;' : 'color:#aaa;' }}">
+                    {{ $sale->tax_amount > 0 ? number_format($sale->tax_amount, 2) : '—' }}
+                </td>
                 <td class="text-right amount">{{ number_format($sale->total_amount, 2) }}</td>
                 <td style="font-size:9px; color:#555;">{{ $sale->notes ?? '—' }}</td>
             </tr>
@@ -149,6 +153,12 @@
             <span>Total Discounts:</span>
             <span>-{{ number_format($activeSales->sum('discount_amount'), 2) }}</span>
         </div>
+        @if($activeSales->sum('tax_amount') > 0)
+        <div class="summary-row" style="color:#1a6b9e;">
+            <span>Total VAT Collected:</span>
+            <span>{{ number_format($activeSales->sum('tax_amount'), 2) }}</span>
+        </div>
+        @endif
         <div class="summary-row summary-total">
             <span>TOTAL SALES</span>
             <span>{{ number_format($activeSales->sum('total_amount'), 2) }}</span>

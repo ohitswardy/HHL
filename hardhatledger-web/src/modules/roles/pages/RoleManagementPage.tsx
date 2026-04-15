@@ -58,8 +58,48 @@ const MODULE_MAP: { group: string; label: string; permissions: string[] }[] = [
   },
   {
     group: 'Accounting',
-    label: 'Accounting & Reports',
-    permissions: ['accounting.view', 'accounting.journal-entries', 'reports.income-statement', 'reports.balance-sheet', 'reports.cash-flow', 'reports.client-statements', 'reports.sales-report', 'bank-reconciliation.view', 'bank-reconciliation.manage'],
+    label: 'Expenses & Chart of Accounts',
+    permissions: ['accounting.view'],
+  },
+  {
+    group: 'Accounting',
+    label: 'Journal Entries',
+    permissions: ['accounting.journal-entries'],
+  },
+  {
+    group: 'Accounting',
+    label: 'Bank Transactions',
+    permissions: ['bank-reconciliation.view', 'bank-reconciliation.manage'],
+  },
+  {
+    group: 'Accounting',
+    label: 'Income Statement',
+    permissions: ['reports.income-statement'],
+  },
+  {
+    group: 'Accounting',
+    label: 'Balance Sheet',
+    permissions: ['reports.balance-sheet'],
+  },
+  {
+    group: 'Accounting',
+    label: 'Cash Flow',
+    permissions: ['reports.cash-flow'],
+  },
+  {
+    group: 'Accounting',
+    label: 'Client Statements',
+    permissions: ['reports.client-statements'],
+  },
+  {
+    group: 'Accounting',
+    label: 'Sales Report',
+    permissions: ['reports.sales-report'],
+  },
+  {
+    group: 'Accounting',
+    label: 'Tax Settings',
+    permissions: ['settings.manage'],
   },
   {
     group: 'Admin',

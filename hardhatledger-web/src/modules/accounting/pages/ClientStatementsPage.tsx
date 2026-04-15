@@ -191,7 +191,7 @@ export function ClientStatementsPage() {
     rows.push(
       ['Transaction #', 'Date', 'Time', 'Fulfillment Type', 'Status',
         'Payment Method(s)', 'Cashier',
-        'Subtotal (₱)', 'Discount (₱)', 'Total (₱)', 'Paid (₱)', 'Balance Due (₱)']
+        'Subtotal (₱)', 'Discount (₱)', 'VAT (₱)', 'Total (₱)', 'Paid (₱)', 'Balance Due (₱)']
         .map(esc).join(',')
     );
 
@@ -209,6 +209,7 @@ export function ClientStatementsPage() {
         tx.user?.name || 'Unknown',
         tx.subtotal.toFixed(2),
         tx.discount_amount.toFixed(2),
+        (tx.tax_amount ?? 0).toFixed(2),
         tx.total_amount.toFixed(2),
         tx.total_paid.toFixed(2),
         tx.balance_due.toFixed(2),
@@ -539,6 +540,7 @@ export function ClientStatementsPage() {
                       <th>Cashier</th>
                       <th className="text-right">Subtotal</th>
                       <th className="text-right">Discount</th>
+                      <th className="text-right">VAT</th>
                       <th className="text-right">Total</th>
                       <th className="text-right">Paid</th>
                       <th className="text-right">Balance Due</th>
@@ -578,6 +580,9 @@ export function ClientStatementsPage() {
                         </td>
                         <td className="text-right" style={{ color: 'var(--n-danger)' }}>
                           {tx.discount_amount.toFixed(2)}
+                        </td>
+                        <td className="text-right" style={{ color: (tx.tax_amount ?? 0) > 0 ? 'var(--n-info)' : 'var(--n-text-dim)' }}>
+                          {(tx.tax_amount ?? 0) > 0 ? (tx.tax_amount ?? 0).toFixed(2) : '—'}
                         </td>
                         <td className="text-right font-semibold">{tx.total_amount.toFixed(2)}</td>
                         <td className="text-right text-green-600">{tx.total_paid.toFixed(2)}</td>

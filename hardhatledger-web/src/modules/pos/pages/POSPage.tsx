@@ -30,6 +30,8 @@ export function POSPage() {
   const [paymentTermsModal, setPaymentTermsModal] = useState(false);
   const [paymentTermsData, setPaymentTermsData] = useState<PaymentTermsData | null>(null);
   const [discountEdit, setDiscountEdit] = useState<Record<number, string>>({});
+  const [applyTax, setApplyTax] = useState(false);
+  const [systemTaxRate, setSystemTaxRate] = useState(12);
   const searchRef = useRef<HTMLInputElement>(null);
   const skuRef = useRef<HTMLInputElement>(null);
 
@@ -59,6 +61,10 @@ export function POSPage() {
   useEffect(() => {
     api.get('/clients', { params: { per_page: 200 } }).then((res) => setClients(res.data.data));
     api.get('/categories').then((res) => setCategories(res.data.data));
+    api.get('/settings').then((res) => {
+      const rate = parseFloat(res.data.data?.tax_rate?.value ?? '12');
+      if (!isNaN(rate) && rate >= 0) setSystemTaxRate(rate);
+    });
   }, []);
 
   // Debounced server-side product search
@@ -116,7 +122,9 @@ export function POSPage() {
     setProcessing(true);
     try {
       const fee = cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0;
-      const grandTotal = cart.getTotal() + fee;
+      const preTotal = cart.getTotal() + fee;
+      const taxAmt = applyTax ? parseFloat((preTotal * systemTaxRate / 100).toFixed(2)) : 0;
+      const grandTotal = preTotal + taxAmt;
 
       // Build payments array — handle payment_terms specially
       let paymentsPayload: Array<{
@@ -155,6 +163,7 @@ export function POSPage() {
         })),
         payments: paymentsPayload,
         delivery_fee: fee,
+        tax_amount: taxAmt,
         notes: [
           saleNotes.trim(),
           paymentMethod === 'payment_terms' && paymentTermsData?.notes
@@ -169,6 +178,7 @@ export function POSPage() {
       setSaleNotes('');
       setPaymentTermsData(null);
       setPaymentMethod('cash');
+      setApplyTax(false);
       setProductRefresh((n) => n + 1);
       setReceiptModal(true);
     } catch (err: any) {
@@ -542,10 +552,36 @@ export function POSPage() {
               )}
             </div>
           )}
-          <div className="flex justify-between text-lg font-bold pt-2" style={{ borderTop: '1px solid var(--n-divider)', fontFamily: 'var(--n-font-display)' }}>
-            <span>TOTAL</span>
-            <span className="text-amber-dark">{(cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0)).toFixed(2)}</span>
-          </div>
+          {/* VAT / Sales Tax toggle */}
+          {(() => {
+            const baseFee = cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0;
+            const preTotal = cart.getTotal() + baseFee;
+            const taxAmt = applyTax ? parseFloat((preTotal * systemTaxRate / 100).toFixed(2)) : 0;
+            const grandTotal = preTotal + taxAmt;
+            return (
+              <>
+                <label className="flex items-center gap-2 cursor-pointer select-none text-sm pt-1">
+                  <input
+                    type="checkbox"
+                    checked={applyTax}
+                    onChange={(e) => setApplyTax(e.target.checked)}
+                    className="w-4 h-4 accent-amber-500 cursor-pointer"
+                  />
+                  <span>Apply VAT / Sales Tax ({systemTaxRate}%)</span>
+                </label>
+                {applyTax && (
+                  <div className="flex justify-between text-sm" style={{ color: 'var(--n-info)' }}>
+                    <span>VAT ({systemTaxRate}%)</span>
+                    <span>+{taxAmt.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-lg font-bold pt-2" style={{ borderTop: '1px solid var(--n-divider)', fontFamily: 'var(--n-font-display)' }}>
+                  <span>TOTAL</span>
+                  <span className="text-amber-dark">{grandTotal.toFixed(2)}</span>
+                </div>
+              </>
+            );
+          })()}
           <div className="flex gap-3 pt-1">
             <Button variant="secondary" className="flex-1" onClick={() => setConfirmSaleModal(false)}>Back</Button>
             <Button variant="amber" className="flex-1" onClick={handleConfirmSale} loading={processing}>
@@ -587,6 +623,11 @@ export function POSPage() {
               <p className="text-sm" style={{ color: 'var(--n-text-secondary)' }}>
                 {lastSale.client?.business_name || 'Walk-in Customer'} | {lastSale.fulfillment_type}
               </p>
+              {lastSale.tax_amount > 0 && (
+                <p className="text-xs" style={{ color: 'var(--n-info)' }}>
+                  Includes VAT: ₱{lastSale.tax_amount.toFixed(2)}
+                </p>
+              )}
 
               {/* Payment Terms summary block */}
               {isTermsSale && (

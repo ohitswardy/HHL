@@ -27,6 +27,7 @@ class StoreSaleRequest extends FormRequest
             'payments.*.due_date'          => ['nullable', 'date'],
             'fulfillment_type' => ['required', Rule::in(['pickup', 'delivery'])],
             'delivery_fee'     => ['nullable', 'numeric', 'min:0'],
+            'tax_amount'       => ['nullable', 'numeric', 'min:0'],
             'notes'            => ['nullable', 'string'],
         ];
     }
