@@ -31,18 +31,20 @@
     .stats-value { font-size: 11pt; font-weight: bold; color: #F5A623; margin-top: 3px; }
 
     /* ── Data Table ── */
-    table.dt { width: 100%; border-collapse: collapse; font-size: 7.5pt; table-layout: fixed; }
+    table.dt { width: 100%; border-collapse: collapse; font-size: 7pt; table-layout: fixed; }
 
     table.dt thead tr { background: #2d3748; }
     table.dt thead th {
-        padding: 6px 7px;
+        padding: 6px 5px;
         color: #fff;
-        font-size: 7pt;
+        font-size: 6.5pt;
         font-weight: bold;
         text-transform: uppercase;
-        letter-spacing: 0.3px;
+        letter-spacing: 0;
         text-align: left;
-        white-space: nowrap;
+        white-space: normal;
+        vertical-align: bottom;
+        line-height: 1.2;
     }
     table.dt thead th.r { text-align: right; }
     table.dt thead th.c { text-align: center; }
@@ -52,7 +54,7 @@
     table.dt tbody tr.deposit-row td { color: #22543d; }
     table.dt tbody tr.payment-row td { color: #742a2a; }
 
-    table.dt tbody td { padding: 5px 7px; vertical-align: top; }
+    table.dt tbody td { padding: 5px 6px; vertical-align: top; word-break: break-word; overflow-wrap: break-word; }
     table.dt tbody td.r { text-align: right; }
     table.dt tbody td.c { text-align: center; }
     table.dt tbody td.mono { font-family: 'Courier New', monospace; font-size: 7pt; }
@@ -136,16 +138,17 @@
 @else
 <table class="dt">
     <colgroup>
-        <col style="width:20px">   {{-- # --}}
-        <col style="width:70px">   {{-- Date --}}
-        <col style="width:100px">  {{-- Ref No --}}
-        <col style="width:70px">   {{-- Type --}}
-        <col>                      {{-- Payee/Account (flex) --}}
-        <col>                      {{-- Memo/Notes (flex) --}}
-        <col style="width:80px">   {{-- Payment --}}
-        <col style="width:80px">   {{-- Deposit --}}
-        <col style="width:60px">   {{-- Tax --}}
-        <col style="width:85px">   {{-- Balance --}}
+        <col style="width:12px">   {{-- # --}}
+        <col style="width:60px">   {{-- Date --}}
+        <col style="width:82px">  {{-- Ref No --}}
+        <col style="width:56px">   {{-- Type --}}
+        <col style="width:72px">   {{-- Payee/Account --}}
+        <col>                      {{-- Bank/Check Details (flex) --}}
+        <col>                      {{-- Additional Notes (flex) --}}
+        <col style="width:70px">   {{-- Payment --}}
+        <col style="width:70px">   {{-- Deposit --}}
+        <col style="width:48px">   {{-- Tax --}}
+        <col style="width:80px">   {{-- Balance --}}
     </colgroup>
     <thead>
         <tr>
@@ -154,7 +157,8 @@
             <th>Ref No.</th>
             <th class="c">Type</th>
             <th>Payee / Account</th>
-            <th>Memo / Notes</th>
+            <th>Bank / Check Details</th>
+            <th>Additional Notes</th>
             <th class="r">Payment</th>
             <th class="r">Deposit</th>
             <th class="r">Tax</th>
@@ -182,6 +186,7 @@
             <td class="c"><span class="badge {{ $typeBadge }}">{{ $txn['type'] }}</span></td>
             <td>{{ $txn['payee_account'] }}</td>
             <td style="font-size:7pt;">{{ $txn['memo'] ?? '' }}</td>
+            <td style="font-size:7pt; color:#4a5568;">{{ $txn['additional_notes'] ?? '' }}</td>
             <td class="r">{{ ($txn['payment_amount'] ?? 0) > 0 ? '₱' . number_format($txn['payment_amount'], 2) : '' }}</td>
             <td class="r">{{ ($txn['deposit_amount'] ?? 0) > 0 ? '₱' . number_format($txn['deposit_amount'], 2) : '' }}</td>
             <td class="r">{{ ($txn['tax'] ?? 0) > 0 ? '₱' . number_format($txn['tax'], 2) : '' }}</td>
@@ -191,7 +196,7 @@
     </tbody>
     <tfoot>
         <tr>
-            <td colspan="6" style="text-align:right;">TOTALS</td>
+            <td colspan="7" style="text-align:right;">TOTALS</td>
             <td class="r">&#8369;{{ number_format($totals['total_payments'], 2) }}</td>
             <td class="r">&#8369;{{ number_format($totals['total_deposits'], 2) }}</td>
             <td class="r">&#8369;{{ number_format($totals['total_tax'], 2) }}</td>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
@@ -10,7 +10,8 @@ import { DatePicker } from '../../../components/ui/DatePicker';
 import {
   HiPlus, HiEye, HiSearch, HiX, HiChevronLeft, HiChevronRight,
   HiCurrencyDollar, HiCheckCircle, HiBan, HiFilter, HiRefresh,
-  HiExclamation, HiDocumentText, HiDownload,
+  HiExclamation, HiDocumentText, HiDownload, HiDocumentDownload,
+  HiChevronDown, HiTable,
 } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
@@ -44,7 +45,7 @@ interface Expense {
   status: 'draft' | 'recorded' | 'voided';
   source: 'manual' | 'purchase_order';
   purchase_order_id: number | null;
-  purchase_order?: { id: number; po_number: string } | null;
+  purchase_order?: { id: number; po_number: string; status: string } | null;
   user?: { id: number; name: string };
   created_at: string;
 }
@@ -111,6 +112,17 @@ export function ExpensesPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'csv' | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  /* close dropdown on outside click */
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   /* load master data once */
   useEffect(() => {
@@ -204,24 +216,23 @@ export function ExpensesPage() {
     return params;
   };
 
-  const handleExport = async (type: 'pdf' | 'csv') => {
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExport = async (type: 'pdf' | 'csv', filtered: boolean) => {
+    setExportOpen(false);
     setExporting(type);
     try {
-      const r = await api.get(`/expenses/export/${type}`, {
-        params: buildExportParams(),
-        responseType: 'blob',
-      });
+      const params = filtered ? buildExportParams() : {};
+      const r = await api.get(`/expenses/export/${type}`, { params, responseType: 'blob' });
       const mimeType = type === 'pdf' ? 'application/pdf' : 'text/csv';
-      const blob = new Blob([r.data], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `expenses-${dayjs().format('YYYY-MM-DD')}.${type}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      toast.success(`${type.toUpperCase()} downloaded`);
+      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
+      downloadBlob(new Blob([r.data], { type: mimeType }), `expenses${suffix}.${type}`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} expenses exported as ${type.toUpperCase()}`);
     } catch {
       toast.error(`Failed to export ${type.toUpperCase()}`);
     } finally {
@@ -269,26 +280,37 @@ export function ExpensesPage() {
             {syncing ? <Spinner size="sm" /> : <HiRefresh className="w-4 h-4 mr-2" />}
             Sync from POs
           </Button>
-          {/* ── Export group ── */}
-          <div className="flex rounded-lg overflow-hidden border border-[var(--n-divider)]">
+          {/* ── Export dropdown ── */}
+          <div className="relative" ref={exportRef}>
             <button
-              onClick={() => handleExport('pdf')}
+              onClick={() => setExportOpen((v) => !v)}
               disabled={!!exporting}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[var(--n-text)] bg-[var(--n-surface)] hover:bg-red-50 hover:text-red-700 transition-colors border-r border-[var(--n-divider)] disabled:opacity-50"
-              title="Export as PDF"
+              className="neu-btn neu-btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}
             >
-              {exporting === 'pdf' ? <Spinner size="sm" /> : <HiDownload className="w-3.5 h-3.5" />}
-              PDF
+              {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
+              Export
+              <HiChevronDown className="w-3 h-3" />
             </button>
-            <button
-              onClick={() => handleExport('csv')}
-              disabled={!!exporting}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[var(--n-text)] bg-[var(--n-surface)] hover:bg-green-50 hover:text-green-700 transition-colors disabled:opacity-50"
-              title="Export as CSV"
-            >
-              {exporting === 'csv' ? <Spinner size="sm" /> : <HiDownload className="w-3.5 h-3.5" />}
-              CSV
-            </button>
+            {exportOpen && (
+              <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
+                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
+                <button onClick={() => handleExport('pdf', false)} disabled={!!exporting} className="neu-dropdown-item">
+                  <HiDocumentDownload className="w-4 h-4" /> All Expenses (PDF)
+                </button>
+                <button onClick={() => handleExport('pdf', true)} disabled={!!exporting} className="neu-dropdown-item">
+                  <HiDocumentDownload className="w-4 h-4" /> Filtered Expenses (PDF)
+                </button>
+                <div className="border-t border-(--n-border) my-1" />
+                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
+                <button onClick={() => handleExport('csv', false)} disabled={!!exporting} className="neu-dropdown-item">
+                  <HiTable className="w-4 h-4" /> All Expenses (CSV)
+                </button>
+                <button onClick={() => handleExport('csv', true)} disabled={!!exporting} className="neu-dropdown-item">
+                  <HiTable className="w-4 h-4" /> Filtered Expenses (CSV)
+                </button>
+              </div>
+            )}
           </div>
           <Button variant="amber" onClick={() => setCreateOpen(true)}>
             <HiPlus className="w-4 h-4 mr-2" /> Record Expense
@@ -727,18 +749,37 @@ function ExpenseFormModal({
     <Modal title={title} isOpen onClose={onClose} width="lg">
       <div className="space-y-4">
         {/* PO context banner for draft PO-sourced expenses */}
-        {isDraft && expense?.source === 'purchase_order' && (
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
-            <HiExclamation className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-amber-800">Auto-imported from Purchase Order</p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                PO {expense.purchase_order?.po_number ?? expense.reference_number} was fully received.
-                Please review the VAT amount and category before confirming.
-              </p>
+        {isDraft && expense?.source === 'purchase_order' && (() => {
+          const poStatus = expense.purchase_order?.status;
+          const isPartialCancel = poStatus === 'cancelled';
+          return (
+            <div className={`flex items-start gap-3 p-3 rounded-xl border ${
+              isPartialCancel
+                ? 'bg-red-50 border-red-200'
+                : 'bg-amber-50 border-amber-200'
+            }`}>
+              <HiExclamation className={`w-5 h-5 mt-0.5 shrink-0 ${
+                isPartialCancel ? 'text-red-500' : 'text-amber-600'
+              }`} />
+              <div>
+                <p className={`text-sm font-semibold ${
+                  isPartialCancel ? 'text-red-800' : 'text-amber-800'
+                }`}>Auto-imported from Purchase Order</p>
+                <p className={`text-xs mt-0.5 ${
+                  isPartialCancel ? 'text-red-700' : 'text-amber-700'
+                }`}>
+                  {isPartialCancel ? (
+                    <>PO {expense.purchase_order?.po_number ?? expense.reference_number} was <strong>cancelled after partial receipt</strong>.
+                    {' '}This expense reflects only the received portion. Review and confirm before recording.</>
+                  ) : (
+                    <>PO {expense.purchase_order?.po_number ?? expense.reference_number} was fully received.
+                    {' '}Please review the VAT amount and category before confirming.</>
+                  )}
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Date */}

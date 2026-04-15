@@ -117,6 +117,12 @@ export interface PurchaseOrder {
   total_amount: number;
   expected_date: string | null;
   received_date: string | null;
+  cancelled_at: string | null;
+  cancellation_notes: string | null;
+  received_total: number | null;
+  cancelled_total: number | null;
+  received_qty: number | null;
+  cancelled_qty: number | null;
   notes: string | null;
   payment_method?: string;
   items?: PurchaseOrderItem[];
@@ -249,6 +255,7 @@ export interface BankTransaction {
   type: 'Deposit' | 'Expense' | 'Purchase Order';
   payee_account: string;
   memo: string;
+  additional_notes: string;
   payment_amount: number;
   deposit_amount: number;
   tax: number;

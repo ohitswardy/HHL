@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AuditLogResource;
 use App\Models\AuditLog;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -64,6 +65,36 @@ class AuditLogController extends Controller
                 'table_names' => $tables,
             ],
         ]);
+    }
+
+    public function exportPdf(Request $request): \Illuminate\Http\Response
+    {
+        $query = AuditLog::with('user')->latest();
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('table_name', 'like', "%{$search}%")
+                  ->orWhere('action', 'like', "%{$search}%")
+                  ->orWhere('ip_address', 'like', "%{$search}%")
+                  ->orWhereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"));
+            });
+        }
+        if ($request->filled('action'))     $query->where('action',     $request->action);
+        if ($request->filled('table_name')) $query->where('table_name', $request->table_name);
+        if ($request->filled('date_from'))  $query->whereDate('created_at', '>=', $request->date_from);
+        if ($request->filled('date_to'))    $query->whereDate('created_at', '<=', $request->date_to);
+
+        $logs = $query->limit(2000)->get();
+
+        $filters = $request->only(['search', 'action', 'table_name', 'date_from', 'date_to']);
+        $pdf = Pdf::loadView('reports.audit-trail', [
+            'logs'        => $logs,
+            'filters'     => $filters,
+            'generatedAt' => now()->format('F j, Y g:i A'),
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->download('audit-trail-' . now()->format('Y-m-d') . '.pdf');
     }
 
     public function show(AuditLog $auditLog): JsonResponse

@@ -12,6 +12,7 @@ use App\Models\ClientTier;
 use App\Models\InventoryStock;
 use App\Models\Product;
 use App\Models\ProductPrice;
+use App\Services\InventoryService;
 use App\Services\PricingService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -20,7 +21,10 @@ use Illuminate\Support\Facades\DB;
 
 class ProductController extends Controller
 {
-    public function __construct(private PricingService $pricingService) {}
+    public function __construct(
+        private PricingService $pricingService,
+        private InventoryService $inventoryService,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -284,7 +288,7 @@ class ProductController extends Controller
         ])->deleteFileAfterSend(true);
     }
 
-    public function import(Request $request): JsonResponse
+    public function importPreview(Request $request): JsonResponse
     {
         $request->validate(['file' => 'required|file|max:10240']);
 
@@ -293,9 +297,9 @@ class ProductController extends Controller
 
         try {
             $rows = match(true) {
-                $extension === 'tsv'                    => $this->parseFlatFile($file->getPathname(), "\t"),
-                in_array($extension, ['xlsx', 'xls'])   => $this->parseSpreadsheet($file->getPathname()),
-                default                                 => $this->parseFlatFile($file->getPathname(), ','),
+                $extension === 'tsv'                  => $this->parseFlatFile($file->getPathname(), "\t"),
+                in_array($extension, ['xlsx', 'xls']) => $this->parseSpreadsheet($file->getPathname()),
+                default                               => $this->parseFlatFile($file->getPathname(), ','),
             };
         } catch (\Throwable $e) {
             return response()->json(['message' => 'Could not parse file: ' . $e->getMessage()], 422);
@@ -305,10 +309,159 @@ class ProductController extends Controller
             return response()->json(['message' => 'No data rows found in file.'], 422);
         }
 
-        $retailTier   = ClientTier::where('name', 'Retail')->first();
+        // Detect quantity column presence from the header keys of the first data row
+        $firstRow          = $rows[0] ?? [];
+        $hasQuantityColumn = array_key_exists('stock', $firstRow) || array_key_exists('quantity', $firstRow);
+
+        $previewRows = [];
+        $newCount    = 0;
+        $updateCount = 0;
+        $skipCount   = 0;
+
+        foreach ($rows as $i => $row) {
+            $rowNum = $i + 2;
+            $name   = trim($row['name'] ?? '');
+            $sku    = trim($row['sku'] ?? '');
+
+            if (empty($name)) {
+                $previewRows[] = [
+                    'row_num'          => $rowNum,
+                    'name'             => null,
+                    'sku'              => $sku ?: null,
+                    'status'           => 'skip',
+                    'reason'           => "Missing 'name'",
+                    'import_data'      => null,
+                    'existing_product' => null,
+                ];
+                $skipCount++;
+                continue;
+            }
+
+            $importQty  = $hasQuantityColumn ? (int) ($row['stock'] ?? $row['quantity'] ?? 0) : null;
+            $importData = [
+                'name'               => $name,
+                'sku'                => $sku ?: null,
+                'category'           => trim($row['category'] ?? '') ?: null,
+                'unit'               => trim($row['unit'] ?? 'pc') ?: 'pc',
+                'cost_price'         => (float) ($row['cost_price'] ?? $row['cost'] ?? 0),
+                'base_selling_price' => (float) ($row['retail_price'] ?? $row['selling_price'] ?? $row['base_selling_price'] ?? 0),
+                'quantity'           => $importQty,
+            ];
+
+            // Check if this product already exists — priority: SKU → name (case-insensitive)
+            $matchedBy       = null;
+            $existingProduct = null;
+            if ($sku) {
+                $existingProduct = Product::with(['category', 'stock'])->where('sku', $sku)->first();
+                if ($existingProduct) $matchedBy = 'sku';
+            }
+            if (!$existingProduct) {
+                $existingProduct = Product::with(['category', 'stock'])
+                    ->whereRaw('LOWER(name) = ?', [strtolower($name)])
+                    ->first();
+                if ($existingProduct) $matchedBy = 'name';
+            }
+
+            $existing = null;
+            if ($existingProduct) {
+                $existing = [
+                    'id'                 => $existingProduct->id,
+                    'name'               => $existingProduct->name,
+                    'sku'                => $existingProduct->sku,
+                    'category'           => $existingProduct->category?->name,
+                    'unit'               => $existingProduct->unit,
+                    'cost_price'         => (float) $existingProduct->cost_price,
+                    'base_selling_price' => (float) $existingProduct->base_selling_price,
+                    'current_stock'      => $existingProduct->stock?->quantity_on_hand ?? 0,
+                    'matched_by'         => $matchedBy,
+                ];
+            }
+
+            if ($existing) {
+                $matchLabel = $matchedBy === 'sku' ? "SKU '{$existing['sku']}'" : "name '{$name}'";
+                if ($hasQuantityColumn) {
+                    $previewRows[] = [
+                        'row_num'          => $rowNum,
+                        'name'             => $name,
+                        'sku'              => $sku ?: $existing['sku'],
+                        'status'           => 'existing',
+                        'reason'           => "Matched by {$matchLabel} — stock will be updated",
+                        'import_data'      => $importData,
+                        'existing_product' => $existing,
+                    ];
+                    $updateCount++;
+                } else {
+                    $previewRows[] = [
+                        'row_num'          => $rowNum,
+                        'name'             => $name,
+                        'sku'              => $sku ?: $existing['sku'],
+                        'status'           => 'skip',
+                        'reason'           => "Matched by {$matchLabel} — no quantity column to update",
+                        'import_data'      => $importData,
+                        'existing_product' => $existing,
+                    ];
+                    $skipCount++;
+                }
+            } else {
+                $previewRows[] = [
+                    'row_num'          => $rowNum,
+                    'name'             => $name,
+                    'sku'              => $sku ?: null,
+                    'status'           => 'new',
+                    'reason'           => null,
+                    'import_data'      => $importData,
+                    'existing_product' => null,
+                ];
+                $newCount++;
+            }
+        }
+
+        return response()->json([
+            'has_quantity_column' => $hasQuantityColumn,
+            'rows'                => $previewRows,
+            'summary'             => [
+                'new_count'    => $newCount,
+                'update_count' => $updateCount,
+                'skip_count'   => $skipCount,
+                'total'        => count($rows),
+            ],
+        ]);
+    }
+
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file'          => 'required|file|max:10240',
+            'quantity_mode' => 'nullable|in:add,override',
+        ]);
+
+        $file         = $request->file('file');
+        $extension    = strtolower($file->getClientOriginalExtension());
+        $quantityMode = $request->input('quantity_mode', 'add');
+
+        try {
+            $rows = match(true) {
+                $extension === 'tsv'                  => $this->parseFlatFile($file->getPathname(), "\t"),
+                in_array($extension, ['xlsx', 'xls']) => $this->parseSpreadsheet($file->getPathname()),
+                default                               => $this->parseFlatFile($file->getPathname(), ','),
+            };
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Could not parse file: ' . $e->getMessage()], 422);
+        }
+
+        if (empty($rows)) {
+            return response()->json(['message' => 'No data rows found in file.'], 422);
+        }
+
+        $retailTier    = ClientTier::where('name', 'Retail')->first();
         $wholesaleTier = ClientTier::where('name', 'Wholesale')->first();
 
+        // Detect quantity column presence
+        $firstRow          = $rows[0] ?? [];
+        $hasQuantityColumn = array_key_exists('stock', $firstRow) || array_key_exists('quantity', $firstRow);
+
         $imported = 0;
+        $updated  = 0;
         $skipped  = 0;
         $errors   = [];
 
@@ -325,19 +478,46 @@ class ProductController extends Controller
                 }
 
                 $sku = trim($row['sku'] ?? '');
-                if ($sku && Product::where('sku', $sku)->exists()) {
-                    $errors[] = "Row {$rowNum}: SKU '{$sku}' already exists — skipped.";
-                    $skipped++;
+
+                // Handle existing products — priority: SKU → name (case-insensitive)
+                $existingProduct = $sku ? Product::where('sku', $sku)->first() : null;
+                if (!$existingProduct) {
+                    $existingProduct = Product::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
+                }
+
+                if ($existingProduct) {
+                    if ($hasQuantityColumn) {
+                        $importQty  = (int) ($row['stock'] ?? $row['quantity'] ?? 0);
+                        $adjustType = $quantityMode === 'override' ? 'adjustment' : 'in';
+                        $this->inventoryService->adjustStock(
+                            $existingProduct,
+                            $importQty,
+                            $adjustType,
+                            'import',
+                            null,
+                            null,
+                            "Stock updated via import ({$quantityMode})",
+                            $request->user()
+                        );
+                        $updated++;
+                    } else {
+                        $errors[] = "Row {$rowNum}: SKU '{$sku}' already exists — skipped (no quantity column).";
+                        $skipped++;
+                    }
                     continue;
                 }
 
+                // --- New product ---
                 if (empty($sku)) {
-                    $base  = 'IMP';
-                    $count = Product::where('sku', 'like', "{$base}-%")->count() + 1 + $imported;
-                    $sku   = $base . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+                    $base      = 'IMP';
+                    $candidate = Product::where('sku', 'like', "{$base}-%")->count() + 1 + $imported;
+                    do {
+                        $sku = $base . '-' . str_pad($candidate, 4, '0', STR_PAD_LEFT);
+                        $candidate++;
+                    } while (Product::where('sku', $sku)->exists());
                 }
 
-                $categoryId  = null;
+                $categoryId   = null;
                 $categoryName = trim($row['category'] ?? '');
                 if ($categoryName) {
                     $categoryId = Category::firstOrCreate(['name' => $categoryName])->id;
@@ -391,11 +571,18 @@ class ProductController extends Controller
             return response()->json(['message' => 'Import failed: ' . $e->getMessage()], 500);
         }
 
+        $parts = [];
+        if ($imported > 0) $parts[] = "{$imported} product(s) created";
+        if ($updated  > 0) $parts[] = "{$updated} stock update(s)";
+        if ($skipped  > 0) $parts[] = "{$skipped} skipped";
+        $message = 'Import complete. ' . implode(', ', $parts) . '.';
+
         return response()->json([
             'imported' => $imported,
+            'updated'  => $updated,
             'skipped'  => $skipped,
             'errors'   => $errors,
-            'message'  => "Import complete. {$imported} product(s) imported, {$skipped} skipped.",
+            'message'  => $message,
         ]);
     }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
@@ -10,6 +10,7 @@ import { Spinner } from '../../../components/ui/Spinner';
 import {
   HiPlus, HiEye, HiTrash, HiSearch, HiX, HiChevronLeft, HiChevronRight,
   HiDocumentText, HiCheckCircle, HiExclamation, HiClipboardCheck, HiDownload,
+  HiBan, HiTable, HiDocumentDownload, HiChevronDown,
 } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
@@ -154,6 +155,52 @@ async function downloadPOPdf(po: PurchaseOrder) {
   }
 }
 
+function downloadPOCsv(po: PurchaseOrder) {
+  const esc = (v: string | number | null | undefined) =>
+    `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows: string[] = [];
+
+  // Document header
+  rows.push('PURCHASE ORDER');
+  rows.push(`PO Number,${esc(po.po_number)}`);
+  rows.push(`Supplier,${esc(po.supplier?.name ?? '—')}`);
+  rows.push(`Status,${esc(po.status)}`);
+  rows.push(`Expected Date,${esc(po.expected_date ? dayjs(po.expected_date).format('MMM D, YYYY') : '—')}`);
+  rows.push(`Received Date,${esc(po.received_date ? dayjs(po.received_date).format('MMM D, YYYY') : '—')}`);
+  rows.push(`Created By,${esc(po.user?.name ?? '—')}`);
+  rows.push(`Created Date,${esc(dayjs(po.created_at).format('MMM D, YYYY h:mm A'))}`);
+  if (po.notes) rows.push(`Notes,${esc(po.notes)}`);
+  if (po.cancellation_notes) rows.push(`Cancellation Reason,${esc(po.cancellation_notes)}`);
+  rows.push('');
+
+  // Items
+  rows.push(['Product', 'SKU', 'Qty Ordered', 'Qty Received', 'Unit Cost (PHP)', 'Line Total (PHP)'].map(esc).join(','));
+  (po.items ?? []).forEach((it) => {
+    rows.push([
+      it.product?.name ?? '—',
+      it.product?.sku ?? '—',
+      it.quantity_ordered,
+      it.quantity_received,
+      it.unit_cost.toFixed(2),
+      (it.quantity_ordered * it.unit_cost).toFixed(2),
+    ].map(esc).join(','));
+  });
+  rows.push('');
+  rows.push(['', '', '', '', 'ORDER TOTAL (PHP):', po.total_amount.toFixed(2)].map(esc).join(','));
+
+  const csv = '\uFEFF' + rows.join('\r\n');
+  const ts = dayjs().format('YYYY-MM-DD');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `PO_${po.po_number}_${ts}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 const getPageNumbers = (current: number, total: number): (number | null)[] => {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
   const range: (number | null)[] = [1];
@@ -192,6 +239,20 @@ export function PurchaseOrdersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailPO, setDetailPO] = useState<PurchaseOrder | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [cancelPO, setCancelPO] = useState<PurchaseOrder | null>(null);
+  const [downloadingCsvId, setDownloadingCsvId] = useState<number | null>(null);
+  const [exportingList, setExportingList] = useState(false);
+  const [exportListOpen, setExportListOpen] = useState(false);
+  const exportListRef = useRef<HTMLDivElement>(null);
+
+  /* close export dropdown on outside click */
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportListRef.current && !exportListRef.current.contains(e.target as Node)) setExportListOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   /* load master data once */
   useEffect(() => {
@@ -243,6 +304,65 @@ export function PurchaseOrdersPage() {
     finally { setDownloadingId(null); }
   };
 
+  const handleDownloadCsv = async (po: PurchaseOrder, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDownloadingCsvId(po.id);
+    try {
+      const r = await api.get(`/purchase-orders/${po.id}`);
+      downloadPOCsv(r.data.data);
+    } catch { toast.error('Failed to download CSV'); }
+    finally { setDownloadingCsvId(null); }
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.setAttribute('download', filename);
+    document.body.appendChild(link); link.click();
+    link.remove(); window.URL.revokeObjectURL(url);
+  };
+
+  const buildListParams = (filtered: boolean): Record<string, unknown> => {
+    if (!filtered) return {};
+    const params: Record<string, unknown> = {};
+    if (statusFilter !== 'all') params.status = statusFilter;
+    if (supplierFilter) params.supplier_id = supplierFilter;
+    if (search.trim()) params.search = search.trim();
+    return params;
+  };
+
+  const handleExportListPdf = async (filtered: boolean) => {
+    setExportListOpen(false);
+    setExportingList(true);
+    try {
+      const params = buildListParams(filtered);
+      const response = await api.get('/purchase-orders/export/pdf', { params, responseType: 'blob' });
+      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
+      downloadBlob(new Blob([response.data]), `purchase-orders${suffix}.pdf`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} purchase orders exported as PDF`);
+    } catch {
+      toast.error('Failed to export PDF');
+    } finally {
+      setExportingList(false);
+    }
+  };
+
+  const handleExportListCsv = async (filtered: boolean) => {
+    setExportListOpen(false);
+    setExportingList(true);
+    try {
+      const params = buildListParams(filtered);
+      const response = await api.get('/purchase-orders/export/csv', { params, responseType: 'blob' });
+      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
+      downloadBlob(new Blob([response.data], { type: 'text/csv' }), `purchase-orders${suffix}.csv`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} purchase orders exported as CSV`);
+    } catch {
+      toast.error('Failed to export CSV');
+    } finally {
+      setExportingList(false);
+    }
+  };
+
   const hasActiveFilters = statusFilter !== 'all' || supplierFilter !== '' || searchInput !== '';
   const clearFilters = () => {
     setStatusFilter('all'); setSupplierFilter(''); setSearchInput(''); setSearch(''); setPage(1);
@@ -261,9 +381,38 @@ export function PurchaseOrdersPage() {
           <h1 className="neu-page-title">Purchase Orders</h1>
           <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">{meta.total} total orders</p>
         </div>
-        <Button variant="amber" onClick={() => setCreateOpen(true)}>
-          <HiPlus className="w-4 h-4 mr-2" /> New Purchase Order
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* ── Export dropdown ── */}
+          <div className="relative" ref={exportListRef}>
+            <Button variant="secondary" onClick={() => setExportListOpen((v) => !v)} loading={exportingList}>
+              <HiDocumentDownload className="w-4 h-4 mr-1" />
+              Export
+              <HiChevronDown className="w-3 h-3 ml-1" />
+            </Button>
+            {exportListOpen && (
+              <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
+                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
+                <button onClick={() => handleExportListPdf(false)} disabled={exportingList} className="neu-dropdown-item">
+                  <HiDocumentDownload className="w-4 h-4" /> All Purchase Orders (PDF)
+                </button>
+                <button onClick={() => handleExportListPdf(true)} disabled={exportingList} className="neu-dropdown-item">
+                  <HiDocumentDownload className="w-4 h-4" /> Filtered Purchase Orders (PDF)
+                </button>
+                <div className="border-t border-(--n-border) my-1" />
+                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
+                <button onClick={() => handleExportListCsv(false)} disabled={exportingList} className="neu-dropdown-item">
+                  <HiTable className="w-4 h-4" /> All Purchase Orders (CSV)
+                </button>
+                <button onClick={() => handleExportListCsv(true)} disabled={exportingList} className="neu-dropdown-item">
+                  <HiTable className="w-4 h-4" /> Filtered Purchase Orders (CSV)
+                </button>
+              </div>
+            )}
+          </div>
+          <Button variant="amber" onClick={() => setCreateOpen(true)}>
+            <HiPlus className="w-4 h-4 mr-2" /> New Purchase Order
+          </Button>
+        </div>
       </div>
 
       {/* ── Summary Cards ──────────────────────────────────────────────────── */}
@@ -387,7 +536,15 @@ export function PurchaseOrdersPage() {
                         <Badge variant={STATUS_VARIANT[po.status] ?? 'neutral'}>{po.status}</Badge>
                       </td>
                       <td className="px-4 py-3 text-center text-[var(--n-text-secondary)]">{po.items?.length ?? '—'}</td>
-                      <td className="text-right font-semibold">₱{fmt(po.total_amount)}</td>
+                  <td className="text-right font-semibold">
+                        <span>₱{fmt(po.total_amount)}</span>
+                        {po.status === 'cancelled' && po.received_total !== null && po.cancelled_total !== null && (
+                          <div className="text-xs font-normal mt-0.5 space-y-0.5">
+                            <div className="text-green-600">Recv: ₱{fmt(po.received_total)}</div>
+                            <div className="text-red-500">Cancelled: ₱{fmt(po.cancelled_total)}</div>
+                          </div>
+                        )}
+                      </td>
                       <td style={{ color: "var(--n-text-secondary)" }}>
                         {po.expected_date ? dayjs(po.expected_date).format('MMM D, YYYY') : '—'}
                       </td>
@@ -408,6 +565,14 @@ export function PurchaseOrdersPage() {
                             title="Download PDF"
                           >
                             <HiDownload className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDownloadCsv(po, e)}
+                            disabled={downloadingCsvId === po.id}
+                            className="p-1.5 hover:bg-teal-50 rounded text-teal-600 transition-colors disabled:opacity-50"
+                            title="Download CSV"
+                          >
+                            <HiTable className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -460,6 +625,16 @@ export function PurchaseOrdersPage() {
           isOpen={!!detailPO}
           onClose={() => setDetailPO(null)}
           onUpdated={(updated) => { setDetailPO(updated); fetchPOs(); }}
+          onRequestCancel={(po) => { setDetailPO(null); setCancelPO(po); }}
+        />
+      )}
+
+      {cancelPO && (
+        <CancelPOModal
+          po={cancelPO}
+          isOpen={!!cancelPO}
+          onClose={() => setCancelPO(null)}
+          onCancelled={(updated) => { setCancelPO(null); setDetailPO(updated); fetchPOs(); }}
         />
       )}
     </div>
@@ -685,16 +860,19 @@ function CreatePOModal({
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 function PODetailModal({
-  po, isOpen, onClose, onUpdated,
+  po, isOpen, onClose, onUpdated, onRequestCancel,
 }: {
   po: PurchaseOrder;
   isOpen: boolean;
   onClose: () => void;
   onUpdated: (updated: PurchaseOrder) => void;
+  onRequestCancel: (po: PurchaseOrder) => void;
 }) {
   const [receiveMode, setReceiveMode] = useState(false);
   const [prevPoKey, setPrevPoKey] = useState(`${po.id}-${po.status}`);
   const canReceive = po.status === 'draft' || po.status === 'sent' || po.status === 'partial';
+  const canCancel = po.status === 'draft' || po.status === 'sent' || po.status === 'partial';
+  const isCancelled = po.status === 'cancelled';
 
   // Reset receive mode when PO changes (derived state instead of effect)
   const poKey = `${po.id}-${po.status}`;
@@ -719,7 +897,36 @@ function PODetailModal({
         <InfoCard label="Expected Date" value={po.expected_date ? dayjs(po.expected_date).format('MMM D, YYYY') : '—'} />
         <InfoCard label="Received Date" value={po.received_date ? dayjs(po.received_date).format('MMM D, YYYY') : '—'} />
         <InfoCard label="Created By" value={`${po.user?.name ?? '—'} · ${dayjs(po.created_at).format('MMM D, YYYY')}`} />
+        {isCancelled && (
+          <InfoCard label="Cancelled On" value={po.cancelled_at ? dayjs(po.cancelled_at).format('MMM D, YYYY h:mm A') : '—'} />
+        )}
       </div>
+
+      {/* ── Cancellation summary (for cancelled POs with partial receipt) ── */}
+      {isCancelled && po.received_total !== null && (
+        <div className="mb-5 grid grid-cols-2 gap-4">
+          <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-3">
+            <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">Items Received</p>
+            <p className="text-lg font-bold text-green-700">
+              {po.received_qty ?? 0} <span className="text-sm font-normal">units</span>
+            </p>
+            <p className="text-sm font-semibold text-green-800 mt-0.5">₱{fmt(po.received_total ?? 0)}</p>
+          </div>
+          <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+            <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Items Cancelled</p>
+            <p className="text-lg font-bold text-red-700">
+              {po.cancelled_qty ?? 0} <span className="text-sm font-normal">units</span>
+            </p>
+            <p className="text-sm font-semibold text-red-800 mt-0.5">₱{fmt(po.cancelled_total ?? 0)}</p>
+          </div>
+        </div>
+      )}
+
+      {po.cancellation_notes && (
+        <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+          <span className="font-semibold">Cancellation reason:</span> {po.cancellation_notes}
+        </div>
+      )}
 
       {po.notes && (
         <div className="mb-5 px-3 py-2 bg-[var(--n-input-bg)] rounded-lg text-sm text-[var(--n-text-secondary)]">
@@ -752,7 +959,7 @@ function PODetailModal({
               <th className="text-left px-4 py-2.5 font-medium text-[var(--n-text-secondary)] w-16">SKU</th>
               <th className="text-center px-4 py-2.5 font-medium text-[var(--n-text-secondary)] w-20">Ordered</th>
               <th className="text-center px-4 py-2.5 font-medium text-[var(--n-text-secondary)] w-20">Received</th>
-              <th className="text-center px-4 py-2.5 font-medium text-[var(--n-text-secondary)] w-24">Remaining</th>
+              <th className="text-center px-4 py-2.5 font-medium text-[var(--n-text-secondary)] w-24">{isCancelled ? 'Cancelled' : 'Remaining'}</th>
               <th className="text-right px-4 py-2.5 font-medium text-[var(--n-text-secondary)] w-28">Unit Cost</th>
               <th className="text-right px-4 py-2.5 font-medium text-[var(--n-text-secondary)] w-28">Line Total</th>
             </tr>
@@ -772,6 +979,8 @@ function PODetailModal({
                       <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
                         <HiCheckCircle className="w-3.5 h-3.5" /> Done
                       </span>
+                    ) : isCancelled && remaining > 0 ? (
+                      <span className="font-medium text-red-500">{remaining}</span>
                     ) : (
                       <span className="font-medium text-amber-600">{remaining}</span>
                     )}
@@ -794,11 +1003,25 @@ function PODetailModal({
       {/* ── Action bar ── */}
       {!receiveMode && (
         <div className="flex justify-between items-center pt-2 border-t border-[var(--n-divider)]">
-          <Button variant="secondary" onClick={() => downloadPOPdf(po)}>
-            <HiDownload className="w-4 h-4 mr-2" /> Download PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => downloadPOPdf(po)}>
+              <HiDownload className="w-4 h-4 mr-2" /> Download PDF
+            </Button>
+            <Button variant="secondary" onClick={() => downloadPOCsv(po)}>
+              <HiTable className="w-4 h-4 mr-2" /> Download CSV
+            </Button>
+          </div>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={onClose}>Close</Button>
+            {canCancel && (
+              <Button
+                variant="secondary"
+                onClick={() => onRequestCancel(po)}
+                className="!text-red-600 !border-red-300 hover:!bg-red-50"
+              >
+                <HiBan className="w-4 h-4 mr-2" /> Cancel PO
+              </Button>
+            )}
             {canReceive && (
               <Button variant="amber" onClick={() => setReceiveMode(true)}>
                 <HiClipboardCheck className="w-4 h-4 mr-2" /> Receive Items
@@ -943,5 +1166,125 @@ function ReceiveItemsForm({
         </Button>
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/*  Cancel PO Modal                                                           */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+function CancelPOModal({
+  po, isOpen, onClose, onCancelled,
+}: {
+  po: PurchaseOrder;
+  isOpen: boolean;
+  onClose: () => void;
+  onCancelled: (updated: PurchaseOrder) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const isPartial = po.status === 'partial';
+  const receivedTotal = po.items
+    ? po.items.reduce((s, it) => s + it.quantity_received * it.unit_cost, 0)
+    : po.received_total ?? 0;
+  const cancelledTotal = po.items
+    ? po.items.reduce((s, it) => s + (it.quantity_ordered - it.quantity_received) * it.unit_cost, 0)
+    : po.cancelled_total ?? 0;
+  const receivedQty = po.items
+    ? po.items.reduce((s, it) => s + it.quantity_received, 0)
+    : po.received_qty ?? 0;
+  const cancelledQty = po.items
+    ? po.items.reduce((s, it) => s + (it.quantity_ordered - it.quantity_received), 0)
+    : po.cancelled_qty ?? 0;
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    try {
+      const res = await api.post(`/purchase-orders/${po.id}/cancel`, {
+        cancellation_notes: reason.trim() || null,
+      });
+      toast.success('Purchase order cancelled');
+      onCancelled(res.data.data);
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || 'Failed to cancel purchase order';
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Cancel Purchase Order" width="md">
+      <div className="space-y-5">
+        {/* PO Identity */}
+        <div className="flex items-center gap-3 px-4 py-3 bg-[var(--n-input-bg)] rounded-xl border border-[var(--n-divider)]">
+          <HiBan className="w-8 h-8 text-red-500 flex-shrink-0" />
+          <div>
+            <p className="font-semibold text-[var(--n-text)]">{po.po_number}</p>
+            <p className="text-sm text-[var(--n-text-secondary)]">{po.supplier?.name ?? '—'} · <Badge variant={STATUS_VARIANT[po.status] ?? 'neutral'}>{po.status}</Badge></p>
+          </div>
+        </div>
+
+        {/* Impact warning for partial POs */}
+        {isPartial && (
+          <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-amber-800">This PO has partial receipts</p>
+            <p className="text-xs text-amber-700">
+              Already-received items will <strong>remain in inventory</strong> and a journal entry will be posted
+              for the received portion. The unfulfilled balance will be cancelled.
+            </p>
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="bg-white rounded-lg border border-green-200 px-3 py-2.5">
+                <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">To Keep (Received)</p>
+                <p className="text-base font-bold text-green-700">{receivedQty} units</p>
+                <p className="text-sm font-semibold text-green-800">₱{fmt(receivedTotal)}</p>
+              </div>
+              <div className="bg-white rounded-lg border border-red-200 px-3 py-2.5">
+                <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">To Cancel</p>
+                <p className="text-base font-bold text-red-700">{cancelledQty} units</p>
+                <p className="text-sm font-semibold text-red-800">₱{fmt(cancelledTotal)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* No receipts warning for draft/sent */}
+        {!isPartial && (
+          <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+            <p className="text-sm font-semibold text-red-700">
+              This will cancel the entire purchase order of <span className="font-bold">₱{fmt(po.total_amount)}</span>.
+            </p>
+            <p className="text-xs text-red-600 mt-1">No items have been received, so no inventory or journal changes will be made.</p>
+          </div>
+        )}
+
+        {/* Reason */}
+        <div>
+          <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Cancellation Reason <span className="text-[var(--n-text-dim)] font-normal">(optional)</span></label>
+          <textarea
+            className="w-full px-3 py-2 rounded-xl border border-[var(--n-divider)] bg-[var(--n-input-bg)] text-sm text-[var(--n-text)] focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
+            rows={3}
+            maxLength={1000}
+            placeholder="Enter reason for cancellation..."
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[var(--n-divider)]">
+        <Button variant="secondary" onClick={onClose} disabled={saving}>Keep PO</Button>
+        <Button
+          variant="secondary"
+          onClick={handleConfirm}
+          loading={saving}
+          className="!bg-red-600 !text-white !border-red-600 hover:!bg-red-700"
+        >
+          <HiBan className="w-4 h-4 mr-2" /> Confirm Cancellation
+        </Button>
+      </div>
+    </Modal>
   );
 }

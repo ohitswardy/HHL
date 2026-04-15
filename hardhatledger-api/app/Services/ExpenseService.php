@@ -59,7 +59,15 @@ class ExpenseService
         });
     }
 
-    public function createFromPurchaseOrder(PurchaseOrder $po): ?Expense
+    /**
+     * Create a draft expense from a purchase order.
+     *
+     * @param  float|null  $amountOverride  Use this amount instead of po->total_amount.
+     *                                      Pass the received portion when creating from a
+     *                                      partial cancellation so the record matches the
+     *                                      journal entry that was actually posted.
+     */
+    public function createFromPurchaseOrder(PurchaseOrder $po, ?float $amountOverride = null): ?Expense
     {
         if (Expense::where('purchase_order_id', $po->id)->exists()) {
             return null;
@@ -67,8 +75,14 @@ class ExpenseService
 
         $po->loadMissing('supplier');
 
+        $amount = $amountOverride ?? (float) $po->total_amount;
+
         $defaultCategory = ExpenseCategory::where('name', 'COGS NonVATable')->first()
             ?? ExpenseCategory::first();
+
+        $notes = $amountOverride !== null
+            ? "Auto-imported from Purchase Order {$po->po_number} [partial cancellation — received portion only]"
+            : "Auto-imported from Purchase Order {$po->po_number}";
 
         return Expense::create([
             'expense_number'     => $this->generateExpenseNumber(),
@@ -77,10 +91,10 @@ class ExpenseService
             'payee'              => $po->supplier?->name ?? 'Unknown Supplier',
             'supplier_id'        => $po->supplier_id,
             'expense_category_id'=> $defaultCategory?->id,
-            'subtotal'           => (float) $po->total_amount,
+            'subtotal'           => $amount,
             'tax_amount'         => 0,
-            'total_amount'       => (float) $po->total_amount,
-            'notes'              => "Auto-imported from Purchase Order {$po->po_number}",
+            'total_amount'       => $amount,
+            'notes'              => $notes,
             'status'             => 'draft',
             'source'             => 'purchase_order',
             'purchase_order_id'  => $po->id,

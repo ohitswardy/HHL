@@ -99,6 +99,7 @@ Route::prefix('v1')->group(function () {
         });
         Route::middleware('permission:products.create')->group(function () {
             Route::post('/products', [ProductController::class, 'store']);
+            Route::post('/products/import/preview', [ProductController::class, 'importPreview']);
             Route::post('/products/import', [ProductController::class, 'import']);
         });
         Route::middleware('permission:products.edit')->group(function () {
@@ -110,8 +111,11 @@ Route::prefix('v1')->group(function () {
         // Inventory
         Route::middleware('permission:inventory.view')->group(function () {
             Route::get('/inventory', [InventoryController::class, 'index']);
+            Route::get('/inventory/export/pdf', [InventoryController::class, 'exportStockPdf']);
+            Route::get('/inventory/export/csv', [InventoryController::class, 'exportStockCsv']);
             Route::get('/inventory/movements', [InventoryController::class, 'movements']);
             Route::get('/inventory/movements/print', [InventoryController::class, 'printMovements']);
+            Route::get('/inventory/movements/export/csv', [InventoryController::class, 'exportMovementsCsv']);
             Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock']);
         });
         Route::middleware('permission:inventory.adjust')->post('/inventory/adjust', [InventoryController::class, 'adjustStock']);
@@ -119,10 +123,13 @@ Route::prefix('v1')->group(function () {
         // Purchase Orders
         Route::middleware('permission:purchase-orders.view')->group(function () {
             Route::get('/purchase-orders', [PurchaseOrderController::class, 'index']);
+            Route::get('/purchase-orders/export/pdf', [PurchaseOrderController::class, 'exportListPdf']);
+            Route::get('/purchase-orders/export/csv', [PurchaseOrderController::class, 'exportListCsv']);
             Route::get('/purchase-orders/{purchase_order}', [PurchaseOrderController::class, 'show']);
         });
         Route::middleware('permission:purchase-orders.create')->post('/purchase-orders', [PurchaseOrderController::class, 'store']);
         Route::middleware('permission:purchase-orders.receive')->post('/purchase-orders/{purchase_order}/receive', [PurchaseOrderController::class, 'receive']);
+        Route::middleware('permission:purchase-orders.cancel')->post('/purchase-orders/{purchase_order}/cancel', [PurchaseOrderController::class, 'cancel']);
 
         // POS
         Route::prefix('pos')->group(function () {
@@ -163,12 +170,14 @@ Route::prefix('v1')->group(function () {
             // Bank Transactions
             Route::get('/bank-transactions', [BankTransactionController::class, 'index']);
             Route::post('/bank-transactions/export/pdf', [BankTransactionController::class, 'exportPdf']);
+            Route::post('/bank-transactions/export/csv', [BankTransactionController::class, 'exportCsv']);
         });
 
         // Audit Logs (Super Admin / audit-logs.view)
         Route::middleware('permission:audit-logs.view')->group(function () {
             Route::get('/audit-logs', [AuditLogController::class, 'index']);
             Route::get('/audit-logs/stats', [AuditLogController::class, 'stats']);
+            Route::get('/audit-logs/export/pdf', [AuditLogController::class, 'exportPdf']);
             Route::get('/audit-logs/{auditLog}', [AuditLogController::class, 'show']);
         });
 

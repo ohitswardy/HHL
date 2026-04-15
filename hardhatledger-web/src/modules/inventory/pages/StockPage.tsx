@@ -4,7 +4,7 @@ import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Spinner } from '../../../components/ui/Spinner';
 import { AdjustStockModal } from '../components/AdjustStockModal';
-import { HiSearch, HiAdjustments, HiExclamation, HiChevronLeft, HiChevronRight, HiRefresh } from 'react-icons/hi';
+import { HiSearch, HiAdjustments, HiExclamation, HiChevronLeft, HiChevronRight, HiRefresh, HiDocumentDownload, HiChevronDown, HiTable } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Product } from '../../../types';
@@ -21,6 +21,18 @@ export function StockPage() {
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
   const [lowCount, setLowCount] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  /* close export dropdown on outside click */
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const fetchStock = useCallback((p: number, q: string, mode: FilterMode) => {
     setLoading(true);
@@ -67,6 +79,54 @@ export function StockPage() {
     fetchStock(page, search, filterMode);
   }, [page]);
 
+  const buildExportParams = (filtered: boolean): Record<string, unknown> => {
+    if (!filtered) return {};
+    const params: Record<string, unknown> = {};
+    if (search.trim()) params.search = search.trim();
+    if (filterMode === 'low') params.low_stock = 1;
+    return params;
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.setAttribute('download', filename);
+    document.body.appendChild(link); link.click();
+    link.remove(); window.URL.revokeObjectURL(url);
+  };
+
+  const handleExportPdf = async (filtered: boolean) => {
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const params = buildExportParams(filtered);
+      const response = await api.get('/inventory/export/pdf', { params, responseType: 'blob' });
+      const suffix = filtered ? `-filtered-${new Date().toISOString().slice(0, 10)}` : `-all-${new Date().toISOString().slice(0, 10)}`;
+      downloadBlob(new Blob([response.data]), `stock-report${suffix}.pdf`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} stock exported as PDF`);
+    } catch {
+      toast.error('Failed to export PDF');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportCsv = async (filtered: boolean) => {
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const params = buildExportParams(filtered);
+      const response = await api.get('/inventory/export/csv', { params, responseType: 'blob' });
+      const suffix = filtered ? `-filtered-${new Date().toISOString().slice(0, 10)}` : `-all-${new Date().toISOString().slice(0, 10)}`;
+      downloadBlob(new Blob([response.data], { type: 'text/csv' }), `stock-report${suffix}.csv`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} stock exported as CSV`);
+    } catch {
+      toast.error('Failed to export CSV');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleAdjusted = (updated: Product) => {
     setProducts((prev) => prev.map((p) => (p.id === updated.id ? { ...p, stock: updated.stock } : p)));
     setAdjustProduct(null);
@@ -104,14 +164,43 @@ export function StockPage() {
           <h1 className="neu-page-title">Stock Management</h1>
           <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">{meta.total} products tracked</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fetchStock(page, search, filterMode)}
-        >
-          <HiRefresh className="w-4 h-4 mr-1" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchStock(page, search, filterMode)}
+          >
+            <HiRefresh className="w-4 h-4 mr-1" />
+            Refresh
+          </Button>
+          {/* ── Export dropdown ── */}
+          <div className="relative" ref={exportRef}>
+            <Button variant="secondary" size="sm" onClick={() => setExportOpen((v) => !v)} disabled={exporting}>
+              {exporting ? <span className="w-4 h-4 mr-1 animate-spin">&#8987;</span> : <HiDocumentDownload className="w-4 h-4 mr-1" />}
+              Export
+              <HiChevronDown className="w-3 h-3 ml-1" />
+            </Button>
+            {exportOpen && (
+              <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '13rem' }}>
+                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
+                <button onClick={() => handleExportPdf(false)} disabled={exporting} className="neu-dropdown-item">
+                  <HiDocumentDownload className="w-4 h-4" /> All Stock (PDF)
+                </button>
+                <button onClick={() => handleExportPdf(true)} disabled={exporting} className="neu-dropdown-item">
+                  <HiDocumentDownload className="w-4 h-4" /> Filtered Stock (PDF)
+                </button>
+                <div className="border-t border-(--n-border) my-1" />
+                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
+                <button onClick={() => handleExportCsv(false)} disabled={exporting} className="neu-dropdown-item">
+                  <HiTable className="w-4 h-4" /> All Stock (CSV)
+                </button>
+                <button onClick={() => handleExportCsv(true)} disabled={exporting} className="neu-dropdown-item">
+                  <HiTable className="w-4 h-4" /> Filtered Stock (CSV)
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Low-stock banner */}

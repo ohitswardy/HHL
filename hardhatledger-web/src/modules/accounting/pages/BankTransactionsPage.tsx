@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
@@ -8,7 +8,7 @@ import { DatePicker } from '../../../components/ui/DatePicker';
 import {
   HiSearch, HiDownload, HiPencil, HiCheck, HiX,
   HiChevronLeft, HiChevronRight, HiCurrencyDollar,
-  HiArrowUp, HiArrowDown,
+  HiArrowUp, HiArrowDown, HiDocumentDownload, HiChevronDown, HiTable,
 } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
@@ -19,6 +19,29 @@ import dayjs from 'dayjs';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+/* ─── additional-notes localStorage persistence ─────────────────────────── */
+
+const NOTES_KEY = 'hhl_bank_additional_notes';
+
+const loadSavedNotes = (): Record<string, string> => {
+  try { return JSON.parse(localStorage.getItem(NOTES_KEY) ?? '{}'); }
+  catch { return {}; }
+};
+
+const saveNotes = (txns: BankTransaction[]): void => {
+  const map = loadSavedNotes();
+  txns.forEach((t) => {
+    if (t.additional_notes) map[t.ref_no] = t.additional_notes;
+    else delete map[t.ref_no];
+  });
+  localStorage.setItem(NOTES_KEY, JSON.stringify(map));
+};
+
+const mergeNotes = (txns: BankTransaction[]): BankTransaction[] => {
+  const saved = loadSavedNotes();
+  return txns.map((t) => ({ ...t, additional_notes: saved[t.ref_no] ?? '' }));
+};
 
 const TYPE_VARIANT: Record<string, 'success' | 'warning' | 'danger'> = {
   Deposit: 'success',
@@ -52,6 +75,17 @@ export function BankTransactionsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  /* close export dropdown on outside click */
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   /* ── edit mode ── */
   const [editMode, setEditMode] = useState(false);
@@ -76,7 +110,7 @@ export function BankTransactionsPage() {
     if (search.trim()) params.search = search.trim();
     api.get('/accounting/bank-transactions', { params })
       .then((r) => {
-        setTransactions(r.data.data);
+        setTransactions(mergeNotes(r.data.data));
         setSummary(r.data.summary);
         setEditMode(false);
       })
@@ -114,44 +148,95 @@ export function BankTransactionsPage() {
     });
   };
 
+  /* ── export helpers ── */
+  const buildTransactionPayload = (data: BankTransaction[]) =>
+    data.map((t) => ({
+      date: t.date, ref_no: t.ref_no, type: t.type,
+      payee_account: t.payee_account, memo: t.memo,
+      additional_notes: t.additional_notes ?? '',
+      payment_amount: t.payment_amount, deposit_amount: t.deposit_amount,
+      tax: t.tax, balance: t.balance,
+    }));
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.setAttribute('download', filename);
+    document.body.appendChild(link); link.click();
+    link.remove(); window.URL.revokeObjectURL(url);
+  };
+
   /* ── export PDF ── */
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (filtered: boolean) => {
+    setExportOpen(false);
     setExporting(true);
+
+    // Auto-apply any pending edits
+    let dataToExport = transactions;
+    if (editMode) {
+      dataToExport = editedTransactions;
+      saveNotes(editedTransactions);
+      setTransactions(editedTransactions);
+      setEditMode(false);
+    }
+
     try {
       const payload: Record<string, unknown> = {};
-      if (dateFrom) payload.from = dateFrom;
-      if (dateTo) payload.to = dateTo;
-
-      // If in edit mode, send edited data
-      if (editMode) {
-        payload.transactions = editedTransactions.map((t) => ({
-          date: t.date,
-          ref_no: t.ref_no,
-          type: t.type,
-          payee_account: t.payee_account,
-          memo: t.memo,
-          payment_amount: t.payment_amount,
-          deposit_amount: t.deposit_amount,
-          tax: t.tax,
-          balance: t.balance,
-        }));
+      if (filtered) {
+        if (dateFrom) payload.from = dateFrom;
+        if (dateTo) payload.to = dateTo;
+        if (search.trim()) payload.search = search.trim();
+        // Filtered: use current view data which already has notes merged
+        payload.transactions = buildTransactionPayload(dataToExport);
+      } else {
+        // All: fetch every transaction, then merge localStorage notes so they appear in the PDF
+        const allRes = await api.get('/accounting/bank-transactions');
+        payload.transactions = buildTransactionPayload(mergeNotes(allRes.data.data));
       }
 
-      const response = await api.post('/accounting/bank-transactions/export/pdf', payload, {
-        responseType: 'blob',
-      });
-
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `bank-transactions-${dayjs().format('YYYY-MM-DD')}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success('PDF exported successfully');
+      const response = await api.post('/accounting/bank-transactions/export/pdf', payload, { responseType: 'blob' });
+      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
+      downloadBlob(new Blob([response.data]), `bank-transactions${suffix}.pdf`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} transactions exported as PDF`);
     } catch {
       toast.error('Failed to export PDF');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  /* ── export CSV ── */
+  const handleExportCsv = async (filtered: boolean) => {
+    setExportOpen(false);
+    setExporting(true);
+
+    let dataToExport = transactions;
+    if (editMode) {
+      dataToExport = editedTransactions;
+      saveNotes(editedTransactions);
+      setTransactions(editedTransactions);
+      setEditMode(false);
+    }
+
+    try {
+      const payload: Record<string, unknown> = {};
+      if (filtered) {
+        if (dateFrom) payload.from = dateFrom;
+        if (dateTo) payload.to = dateTo;
+        if (search.trim()) payload.search = search.trim();
+        payload.transactions = buildTransactionPayload(dataToExport);
+      } else {
+        // All: fetch every transaction, then merge localStorage notes so they appear in the CSV
+        const allRes = await api.get('/accounting/bank-transactions');
+        payload.transactions = buildTransactionPayload(mergeNotes(allRes.data.data));
+      }
+
+      const response = await api.post('/accounting/bank-transactions/export/csv', payload, { responseType: 'blob' });
+      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
+      downloadBlob(new Blob([response.data], { type: 'text/csv' }), `bank-transactions${suffix}.csv`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} transactions exported as CSV`);
+    } catch {
+      toast.error('Failed to export CSV');
     } finally {
       setExporting(false);
     }
@@ -240,7 +325,7 @@ export function BankTransactionsPage() {
               />
             </div>
           </div>
-          <div className="flex gap-2">
+            <div className="flex gap-2">
             {!editMode ? (
               <Button variant="outline" onClick={enterEditMode} disabled={transactions.length === 0}>
                 <HiPencil className="w-4 h-4 mr-1" /> Edit
@@ -251,16 +336,42 @@ export function BankTransactionsPage() {
                   <HiX className="w-4 h-4 mr-1" /> Cancel
                 </Button>
                 <Button variant="amber" onClick={() => {
+                  saveNotes(editedTransactions);
                   setTransactions(editedTransactions);
-                  toast.success('Changes applied — export to save');
+                  setEditMode(false);
+                  toast.success('Changes applied');
                 }}>
                   <HiCheck className="w-4 h-4 mr-1" /> Apply Changes
                 </Button>
               </>
             )}
-            <Button variant="amber" onClick={handleExportPdf} disabled={exporting || transactions.length === 0}>
-              {exporting ? <Spinner size="sm" /> : <><HiDownload className="w-4 h-4 mr-1" /> Export PDF</>}
-            </Button>
+            {/* ── Export dropdown ── */}
+            <div className="relative" ref={exportRef}>
+              <Button variant="amber" onClick={() => setExportOpen((v) => !v)} disabled={exporting || transactions.length === 0}>
+                {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4 mr-1" />}
+                Export
+                <HiChevronDown className="w-3 h-3 ml-1" />
+              </Button>
+              {exportOpen && (
+                <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
+                  <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
+                  <button onClick={() => handleExportPdf(false)} disabled={exporting} className="neu-dropdown-item">
+                    <HiDocumentDownload className="w-4 h-4" /> All Transactions (PDF)
+                  </button>
+                  <button onClick={() => handleExportPdf(true)} disabled={exporting} className="neu-dropdown-item">
+                    <HiDocumentDownload className="w-4 h-4" /> Filtered Transactions (PDF)
+                  </button>
+                  <div className="border-t border-(--n-border) my-1" />
+                  <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
+                  <button onClick={() => handleExportCsv(false)} disabled={exporting} className="neu-dropdown-item">
+                    <HiTable className="w-4 h-4" /> All Transactions (CSV)
+                  </button>
+                  <button onClick={() => handleExportCsv(true)} disabled={exporting} className="neu-dropdown-item">
+                    <HiTable className="w-4 h-4" /> Filtered Transactions (CSV)
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </Card>
@@ -286,7 +397,8 @@ export function BankTransactionsPage() {
                     <th>Ref No.</th>
                     <th>Type</th>
                     <th>Payee / Account</th>
-                    <th>Memo / Notes</th>
+                    <th>Bank / Check Details</th>
+                    <th>Additional Notes</th>
                     <th className="text-right">Payment</th>
                     <th className="text-right">Deposit</th>
                     <th className="text-right">Tax</th>
@@ -320,6 +432,18 @@ export function BankTransactionsPage() {
                             />
                           ) : (
                             <span className="text-sm text-[var(--n-text-secondary)]">{txn.memo}</span>
+                          )}
+                        </td>
+                        <td>
+                          {editMode ? (
+                            <input
+                              className="neu-inline-input w-full text-sm"
+                              placeholder="Add notes…"
+                              value={(editedTransactions[globalIdx] ?? txn).additional_notes ?? ''}
+                              onChange={(e) => updateField(idx, 'additional_notes', e.target.value)}
+                            />
+                          ) : (
+                            <span className="text-sm text-[var(--n-text-secondary)]">{txn.additional_notes}</span>
                           )}
                         </td>
                         <td className="text-right">

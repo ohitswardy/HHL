@@ -187,6 +187,66 @@ class JournalService
         });
     }
 
+    public function postPartialPurchaseEntry(PurchaseOrder $po): void
+    {
+        DB::transaction(function () use ($po) {
+            $po->loadMissing(['items', 'supplier']);
+
+            $receivedTotal = $po->items->sum(
+                fn ($item) => (float) $item->quantity_received * (float) $item->unit_cost
+            );
+
+            if ($receivedTotal <= 0) {
+                return;
+            }
+
+            $entry = JournalEntry::create([
+                'reference_type' => 'purchase_partial',
+                'reference_id'   => $po->id,
+                'description'    => "Partial receipt — PO {$po->po_number} (cancelled)",
+                'date'           => now(),
+                'user_id'        => Auth::id(),
+            ]);
+
+            $inventoryAccount = $this->getAccountByCode('1200');
+            $apAccount        = $this->getAccountByCode('2010');
+
+            $isVatable = $po->supplier && ($po->supplier->is_vatable ?? false);
+
+            if ($isVatable) {
+                $inventoryCost = round($receivedTotal / $this->vatDivisor(), 2);
+                $inputVat      = round($receivedTotal - $inventoryCost, 2);
+
+                $entry->lines()->create([
+                    'account_id' => $inventoryAccount->id,
+                    'debit'  => $inventoryCost,
+                    'credit' => 0,
+                ]);
+
+                $vatInAccount = $this->findAccountByCode('1400') ?? $this->findAccountByCode('1310');
+                if ($vatInAccount && $inputVat > 0) {
+                    $entry->lines()->create([
+                        'account_id' => $vatInAccount->id,
+                        'debit'  => $inputVat,
+                        'credit' => 0,
+                    ]);
+                }
+            } else {
+                $entry->lines()->create([
+                    'account_id' => $inventoryAccount->id,
+                    'debit'  => $receivedTotal,
+                    'credit' => 0,
+                ]);
+            }
+
+            $entry->lines()->create([
+                'account_id' => $apAccount->id,
+                'debit'  => 0,
+                'credit' => $receivedTotal,
+            ]);
+        });
+    }
+
     public function postPurchaseEntry(PurchaseOrder $po): void
     {
         DB::transaction(function () use ($po) {

@@ -34,6 +34,7 @@ class ExpenseResource extends JsonResource
             'purchase_order' => $this->whenLoaded('purchaseOrder', fn () => $this->purchaseOrder ? [
                 'id'        => $this->purchaseOrder->id,
                 'po_number' => $this->purchaseOrder->po_number,
+                'status'    => $this->purchaseOrder->status,
             ] : null),
             'user' => new UserResource($this->whenLoaded('user')),
             'created_at' => $this->created_at?->toISOString(),

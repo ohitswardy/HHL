@@ -17,7 +17,7 @@ class RoleAndPermissionSeeder extends Seeder
             'products.view', 'products.create', 'products.edit', 'products.delete',
             'categories.view', 'categories.create', 'categories.edit', 'categories.delete',
             'inventory.view', 'inventory.adjust',
-            'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.edit', 'purchase-orders.receive',
+            'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.edit', 'purchase-orders.receive', 'purchase-orders.cancel',
         ];
 
         // Supplier permissions

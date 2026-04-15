@@ -3,7 +3,7 @@ import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { DatePicker } from '../../../components/ui/DatePicker';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiSearch, HiChevronLeft, HiChevronRight, HiFilter, HiX, HiPrinter } from 'react-icons/hi';
+import { HiSearch, HiChevronLeft, HiChevronRight, HiFilter, HiX, HiDocumentDownload, HiChevronDown, HiTable } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -33,33 +33,67 @@ export function MovementsPage() {
   const [filterTo, setFilterTo] = useState('');
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
-  const [printing, setPrinting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportBtnRef = useRef<HTMLDivElement>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const canPrint = !!(filterFrom || filterTo);
+  /* close dropdown on outside click */
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportBtnRef.current && !exportBtnRef.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
-  const handlePrint = async () => {
-    if (!canPrint) return;
-    setPrinting(true);
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const buildExportParams = (filtered: boolean): Record<string, string> => {
+    if (!filtered) return {};
+    const params: Record<string, string> = {};
+    if (filterFrom) params.from = filterFrom;
+    if (filterTo)   params.to   = filterTo;
+    if (filterType) params.type = filterType;
+    if (search.trim()) params.search = search.trim();
+    return params;
+  };
+
+  const handleExportPdf = async (filtered: boolean) => {
+    setExportOpen(false);
+    setExporting(true);
     try {
-      const params: Record<string, string> = {};
-      if (filterFrom) params.from = filterFrom;
-      if (filterTo)   params.to   = filterTo;
-      if (filterType) params.type = filterType;
-
+      const params = buildExportParams(filtered);
       const res = await api.get('/inventory/movements/print', { params, responseType: 'blob' });
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      const a = document.createElement('a');
-      const suffix = filterFrom ? `-${filterFrom}` : '';
-      a.href = url;
-      a.download = `inventory-movements${suffix}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Report downloaded');
+      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
+      downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `inventory-movements${suffix}.pdf`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} movements exported as PDF`);
     } catch {
-      toast.error('Failed to generate report');
+      toast.error('Failed to export PDF');
     } finally {
-      setPrinting(false);
+      setExporting(false);
+    }
+  };
+
+  const handleExportCsv = async (filtered: boolean) => {
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const params = buildExportParams(filtered);
+      const res = await api.get('/inventory/movements/export/csv', { params, responseType: 'blob' });
+      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
+      downloadBlob(new Blob([res.data], { type: 'text/csv' }), `inventory-movements${suffix}.csv`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} movements exported as CSV`);
+    } catch {
+      toast.error('Failed to export CSV');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -131,28 +165,34 @@ export function MovementsPage() {
           <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">Full audit trail of all stock changes</p>
         </div>
 
-        <div className="relative group shrink-0">
+        <div className="relative shrink-0" ref={exportBtnRef}>
           <button
-            onClick={handlePrint}
-            disabled={!canPrint || printing}
-            className={`neu-btn ${
-              canPrint
-                ? 'neu-btn-primary'
-                : 'bg-[var(--n-inset)] text-[var(--n-text-dim)] cursor-not-allowed'
-            }`}
+            onClick={() => setExportOpen((v) => !v)}
+            disabled={exporting}
+            className="neu-btn neu-btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}
           >
-            {printing ? (
-              <Spinner size="sm" />
-            ) : (
-              <HiPrinter className="w-4 h-4" />
-            )}
-            Print Report
+            {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
+            Export
+            <HiChevronDown className="w-3 h-3" />
           </button>
-          {/* Tooltip when dates not set */}
-          {!canPrint && (
-            <div className="absolute right-0 top-full mt-2 w-48 bg-gray-800 text-white text-xs rounded-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-              Select a From or To date to enable printing
-              <div className="absolute -top-1.5 right-4 w-3 h-3 bg-gray-800 rotate-45" />
+          {exportOpen && (
+            <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
+              <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
+              <button onClick={() => handleExportPdf(false)} disabled={exporting} className="neu-dropdown-item">
+                <HiDocumentDownload className="w-4 h-4" /> All Movements (PDF)
+              </button>
+              <button onClick={() => handleExportPdf(true)} disabled={exporting} className="neu-dropdown-item">
+                <HiDocumentDownload className="w-4 h-4" /> Filtered Movements (PDF)
+              </button>
+              <div className="border-t border-(--n-border) my-1" />
+              <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
+              <button onClick={() => handleExportCsv(false)} disabled={exporting} className="neu-dropdown-item">
+                <HiTable className="w-4 h-4" /> All Movements (CSV)
+              </button>
+              <button onClick={() => handleExportCsv(true)} disabled={exporting} className="neu-dropdown-item">
+                <HiTable className="w-4 h-4" /> Filtered Movements (CSV)
+              </button>
             </div>
           )}
         </div>

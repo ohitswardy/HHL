@@ -18,6 +18,8 @@ class PurchaseOrder extends Model
         'total_amount',
         'expected_date',
         'received_date',
+        'cancelled_at',
+        'cancellation_notes',
         'notes',
         'payment_method',
         'branch_id',
@@ -29,6 +31,7 @@ class PurchaseOrder extends Model
             'total_amount' => 'decimal:2',
             'expected_date' => 'date',
             'received_date' => 'date',
+            'cancelled_at' => 'datetime',
         ];
     }
 

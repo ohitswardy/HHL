@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input } from '../../../components/ui/Input';
@@ -6,7 +6,9 @@ import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiPlus, HiPencil, HiTrash, HiSearch, HiDocumentDownload, HiUpload, HiCheckCircle, HiExclamationCircle, HiChevronDown, HiDocumentText, HiTable, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
+import { ImportPreviewModal } from '../components/ImportPreviewModal';
+import type { ImportPreviewData } from '../components/ImportPreviewModal';
+import { HiPlus, HiPencil, HiTrash, HiSearch, HiDocumentDownload, HiUpload, HiChevronDown, HiDocumentText, HiTable, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Product, Category, Supplier } from '../../../types';
@@ -28,8 +30,8 @@ export function ProductsPage() {
   // Import state
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: string[]; message: string } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewData, setPreviewData] = useState<ImportPreviewData | null>(null);
 
   // Export dropdown
   const [exportOpen, setExportOpen] = useState(false);
@@ -142,20 +144,36 @@ export function ProductsPage() {
 
   // ── Import ───────────────────────────────────────────────────────────────
 
-  const handleImport = async () => {
+  const handlePreview = async () => {
     if (!importFile) return;
-    setImporting(true); setImportResult(null);
+    setPreviewing(true);
     try {
       const data = new FormData();
       data.append('file', importFile);
-      const res = await api.post('/products/import', data, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setImportResult(res.data);
-      setPage(1);
-    } catch (err: any) { toast.error(err.response?.data?.message || 'Import failed'); }
-    finally { setImporting(false); }
+      const res = await api.post('/products/import/preview', data, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setPreviewData(res.data as ImportPreviewData);
+      setImportOpen(false);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e.response?.data?.message ?? 'Failed to analyse file');
+    } finally {
+      setPreviewing(false);
+    }
   };
 
-  const closeImport = () => { setImportOpen(false); setImportFile(null); setImportResult(null); };
+  const closeImport = () => {
+    setImportOpen(false);
+    setImportFile(null);
+    setPreviewData(null);
+  };
+
+  const handleImportSuccess = () => {
+    setPreviewData(null);
+    setImportFile(null);
+    setPage(1);
+  };
 
   // ── CRUD ─────────────────────────────────────────────────────────────────
 
@@ -359,14 +377,15 @@ export function ProductsPage() {
         <div className="space-y-4">
           <p className="text-sm text-[var(--n-text-secondary)]">
             Upload a <strong>.csv</strong>, <strong>.tsv</strong>, or <strong>.xlsx</strong> file.
-            The first row must be a header row. Include only the columns you have � all are optional except <code>name</code>:
+            The first row must be a header row. Include only the columns you have — all are optional except <code>name</code>:
           </p>
           <div className="bg-[var(--n-input-bg)] rounded-lg p-3 text-xs font-mono text-[var(--n-text)] leading-relaxed">
-            name, sku, category, unit, cost_price, retail_price, wholesale_price, reorder_level, description
+            name, sku, category, unit, cost_price, retail_price, wholesale_price, reorder_level, quantity, description
           </div>
-          <div className="text-xs text-[var(--n-text-secondary)] space-y-0.5">
-            <div><span className="font-semibold text-amber-600">Required:</span> <code>name</code>. All other columns are optional and can be omitted.</div>
-            <div>SKU is auto-generated (IMP-XXXX) if omitted. Rows with duplicate SKUs are skipped.</div>
+          <div className="text-xs text-[var(--n-text-secondary)] space-y-1">
+            <div><span className="font-semibold text-amber-600">Required:</span> <code>name</code>. All other columns are optional.</div>
+            <div>SKU is auto-generated (IMP-XXXX) if omitted. Existing SKUs will have their <strong>stock updated</strong>, not replaced.</div>
+            <div>Include a <code>quantity</code> (or <code>stock</code>) column to set stock levels on import.</div>
           </div>
           <label className="block">
             <span className="text-sm font-medium text-[var(--n-text)]">Select file</span>
@@ -374,34 +393,31 @@ export function ProductsPage() {
               type="file"
               accept=".csv,.tsv,.xlsx,.xls"
               className="mt-1 block w-full text-sm text-[var(--n-text-secondary)] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-navy file:text-white hover:file:bg-navy/80 cursor-pointer"
-              onChange={(e) => { setImportFile(e.target.files?.[0] ?? null); setImportResult(null); }}
+              onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
             />
           </label>
-          {importResult && (
-            <div className="rounded-lg border p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <HiCheckCircle className="w-5 h-5 text-green-500 shrink-0" />
-                <span className="text-sm font-medium text-green-700">{importResult.message}</span>
-              </div>
-              {importResult.errors.length > 0 && (
-                <ul className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-                  {importResult.errors.map((e, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-xs text-red-600">
-                      <HiExclamationCircle className="w-4 h-4 shrink-0 mt-0.5" />{e}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={closeImport}>Close</Button>
-            <Button variant="amber" onClick={handleImport} disabled={!importFile || importing}>
-              <HiUpload className="w-4 h-4 mr-2" />{importing ? 'Importing…' : 'Import'}
+            <Button variant="amber" onClick={handlePreview} disabled={!importFile || previewing}>
+              {previewing ? (
+                <><Spinner size="sm" /><span className="ml-2">Analysing…</span></>
+              ) : (
+                <><HiUpload className="w-4 h-4 mr-2" />Preview &amp; Import</>
+              )}
             </Button>
           </div>
         </div>
       </Modal>
+
+      {/* Import Preview Modal */}
+      {previewData && importFile && (
+        <ImportPreviewModal
+          file={importFile}
+          previewData={previewData}
+          onClose={() => { setPreviewData(null); setImportOpen(true); }}
+          onSuccess={handleImportSuccess}
+        />
+      )}
 
       {/* Add / Edit Product Modal */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Product' : 'New Product'} width="lg">
