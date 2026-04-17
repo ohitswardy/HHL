@@ -65,6 +65,11 @@ export function TransactionsPage() {
   // 'full' = pay entire balance, number = target a specific installment payment ID
   const [rpTarget, setRpTarget] = useState<'full' | number>('full');
 
+  // Inline transaction number edit
+  const [editingTxNumber, setEditingTxNumber] = useState<number | null>(null);
+  const [txNumberDraft, setTxNumberDraft] = useState('');
+  const [savingTxNumber, setSavingTxNumber] = useState(false);
+
   // Update credit due date
   const [updateDueDateTx, setUpdateDueDateTx] = useState<SalesTransaction | null>(null);
   const [updatedDueDates, setUpdatedDueDates] = useState<Record<number, string>>({});
@@ -373,6 +378,23 @@ export function TransactionsPage() {
     }
   };
 
+  const handleSaveTxNumber = async (txId: number) => {
+    const draft = txNumberDraft.trim();
+    if (!draft) return;
+    setSavingTxNumber(true);
+    try {
+      const res = await api.patch(`/pos/sales/${txId}/transaction-number`, { transaction_number: draft });
+      setTransactions((prev) => prev.map((t) => t.id === txId ? res.data.data : t));
+      if (viewingTx?.id === txId) setViewingTx(res.data.data);
+      toast.success('Transaction number updated');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to update transaction number');
+    } finally {
+      setSavingTxNumber(false);
+      setEditingTxNumber(null);
+    }
+  };
+
   // ── Overdue helpers ──
   const getCreditDueDate = (tx: SalesTransaction): string | null =>
     tx.payments?.find(p => p.payment_method === 'credit' && p.status === 'pending')?.due_date ?? null;
@@ -629,7 +651,48 @@ export function TransactionsPage() {
                     onClick={() => handleOpenView(tx)}
                     style={{ cursor: 'pointer' }}
                   >
-                    <td className="font-medium font-mono text-xs">{tx.transaction_number}</td>
+                    <td className="font-medium font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                      {editingTxNumber === tx.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            autoFocus
+                            className="neu-inline-input font-mono text-xs"
+                            style={{ width: '10rem' }}
+                            value={txNumberDraft}
+                            onChange={(e) => setTxNumberDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveTxNumber(tx.id);
+                              if (e.key === 'Escape') setEditingTxNumber(null);
+                            }}
+                            disabled={savingTxNumber}
+                          />
+                          <button
+                            className="neu-btn-icon success"
+                            title="Save"
+                            onClick={() => handleSaveTxNumber(tx.id)}
+                            disabled={savingTxNumber}
+                          >
+                            {savingTxNumber ? <Spinner size="sm" /> : <HiCheck className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            className="neu-btn-icon danger"
+                            title="Cancel"
+                            onClick={() => setEditingTxNumber(null)}
+                            disabled={savingTxNumber}
+                          >
+                            <HiBan className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span
+                          title="Click to edit transaction number"
+                          style={{ cursor: 'text', borderBottom: '1px dashed var(--n-text-dim)', paddingBottom: 1 }}
+                          onClick={() => { setEditingTxNumber(tx.id); setTxNumberDraft(tx.transaction_number); }}
+                        >
+                          {tx.transaction_number}
+                        </span>
+                      )}
+                    </td>
                     <td style={{ color: 'var(--n-text-secondary)' }}>{new Date(tx.created_at).toLocaleString()}</td>
                     <td style={{ color: 'var(--n-text-secondary)' }}>{tx.client?.business_name || 'Walk-in'}</td>
                     <td>

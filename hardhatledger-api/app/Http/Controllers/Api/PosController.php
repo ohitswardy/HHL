@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class PosController extends Controller
 {
@@ -405,6 +406,29 @@ class PosController extends Controller
         }
 
         $payment->update(['due_date' => $request->due_date]);
+
+        $sale->load(['client.tier', 'user', 'items.product', 'payments']);
+        return response()->json(['data' => new SalesTransactionResource($sale)]);
+    }
+
+    public function updateTransactionNumber(Request $request, SalesTransaction $sale): JsonResponse
+    {
+        if ($sale->status === 'voided') {
+            return response()->json(['message' => 'Voided transactions cannot be edited.'], 422);
+        }
+
+        $request->validate([
+            'transaction_number' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('sales_transactions', 'transaction_number')
+                    ->ignore($sale->id)
+                    ->whereNull('deleted_at'),
+            ],
+        ]);
+
+        $sale->update(['transaction_number' => $request->transaction_number]);
 
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
         return response()->json(['data' => new SalesTransactionResource($sale)]);

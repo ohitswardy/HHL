@@ -49,6 +49,8 @@ Route::prefix('v1')->group(function () {
         Route::middleware('permission:roles.manage')->group(function () {
             Route::post('/roles', [RoleController::class, 'store']);
             Route::put('/roles/{role}', [RoleController::class, 'update']);
+            Route::patch('/roles/{role}/rename', [RoleController::class, 'rename']);
+            Route::post('/roles/{role}/clone', [RoleController::class, 'clone']);
             Route::delete('/roles/{role}', [RoleController::class, 'destroy']);
         });
 
@@ -145,6 +147,7 @@ Route::prefix('v1')->group(function () {
             Route::middleware('permission:pos.access')->patch('/sales/{sale}/complete', [PosController::class, 'markCompleted']);
             Route::middleware('permission:pos.access')->post('/sales/{sale}/record-payment', [PosController::class, 'recordPayment']);
             Route::middleware('permission:pos.access')->patch('/sales/{sale}/credit-due-date', [PosController::class, 'updateCreditDueDate']);
+            Route::middleware('permission:pos.void-sale')->patch('/sales/{sale}/transaction-number', [PosController::class, 'updateTransactionNumber']);
             Route::middleware('permission:pos.view-daily-summary')->get('/daily-summary', [PosController::class, 'dailySummary']);
         });
 

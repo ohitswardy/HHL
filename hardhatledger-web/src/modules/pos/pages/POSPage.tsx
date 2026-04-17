@@ -18,7 +18,11 @@ export function POSPage() {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [lastPage, setLastPage] = useState(1);
   const [productRefresh, setProductRefresh] = useState(0);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [processing, setProcessing] = useState(false);
   const [receiptModal, setReceiptModal] = useState(false);
@@ -67,19 +71,52 @@ export function POSPage() {
     });
   }, []);
 
-  // Debounced server-side product search
+  const PER_PAGE = 40;
+
+  // Reset + fetch page 1 whenever search/filter/refresh changes
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearchLoading(true);
-      const params: Record<string, unknown> = { per_page: 80, is_active: true };
+      setCurrentPage(1);
+      const params: Record<string, unknown> = { per_page: PER_PAGE, page: 1, is_active: true };
       if (search.trim()) params.search = search.trim();
       if (filterCategory) params.category_id = filterCategory;
       api.get('/products', { params })
-        .then((res) => setProducts(res.data.data))
+        .then((res) => {
+          setProducts(res.data.data);
+          setLastPage(res.data.meta?.last_page ?? 1);
+        })
         .finally(() => setSearchLoading(false));
     }, 300);
     return () => clearTimeout(timer);
   }, [search, filterCategory, productRefresh]);
+
+  // Infinite scroll: load next page when sentinel enters viewport
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loadingMore && currentPage < lastPage) {
+          const nextPage = currentPage + 1;
+          setLoadingMore(true);
+          const params: Record<string, unknown> = { per_page: PER_PAGE, page: nextPage, is_active: true };
+          if (search.trim()) params.search = search.trim();
+          if (filterCategory) params.category_id = filterCategory;
+          api.get('/products', { params })
+            .then((res) => {
+              setProducts((prev) => [...prev, ...res.data.data]);
+              setCurrentPage(nextPage);
+              setLastPage(res.data.meta?.last_page ?? lastPage);
+            })
+            .finally(() => setLoadingMore(false));
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [currentPage, lastPage, loadingMore, search, filterCategory]);
 
   const addToCart = (product: Product, qty = 1) => {
     const stock = product.stock?.quantity_on_hand ?? 0;
@@ -122,9 +159,8 @@ export function POSPage() {
     setProcessing(true);
     try {
       const fee = cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0;
-      const preTotal = cart.getTotal() + fee;
-      const taxAmt = applyTax ? parseFloat((preTotal * systemTaxRate / 100).toFixed(2)) : 0;
-      const grandTotal = preTotal + taxAmt;
+      const grandTotal = cart.getTotal() + fee;
+      const taxAmt = applyTax ? parseFloat((grandTotal - grandTotal / (1 + systemTaxRate / 100)).toFixed(2)) : 0;
 
       // Build payments array — handle payment_terms specially
       let paymentsPayload: Array<{
@@ -289,6 +325,18 @@ export function POSPage() {
                 <span className="text-xs" style={{ color: 'var(--n-text-dim)' }}>Stock: {p.stock?.quantity_on_hand ?? 0}</span>
               </button>
             ))}
+          </div>
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="py-3 flex justify-center">
+            {loadingMore && (
+              <svg className="w-5 h-5 animate-spin" style={{ color: 'var(--n-text-dim)' }} fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            {!loadingMore && currentPage >= lastPage && products.length > 0 && (
+              <span className="text-xs" style={{ color: 'var(--n-text-dim)' }}>All {products.length} products loaded</span>
+            )}
           </div>
         </Card>
       </div>
@@ -591,9 +639,8 @@ export function POSPage() {
           {/* VAT / Sales Tax toggle */}
           {(() => {
             const baseFee = cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0;
-            const preTotal = cart.getTotal() + baseFee;
-            const taxAmt = applyTax ? parseFloat((preTotal * systemTaxRate / 100).toFixed(2)) : 0;
-            const grandTotal = preTotal + taxAmt;
+            const grandTotal = cart.getTotal() + baseFee;
+            const taxAmt = applyTax ? parseFloat((grandTotal - grandTotal / (1 + systemTaxRate / 100)).toFixed(2)) : 0;
             return (
               <>
                 <label className="flex items-center gap-2 cursor-pointer select-none text-sm pt-1">
@@ -607,8 +654,8 @@ export function POSPage() {
                 </label>
                 {applyTax && (
                   <div className="flex justify-between text-sm" style={{ color: 'var(--n-info)' }}>
-                    <span>VAT ({systemTaxRate}%)</span>
-                    <span>+{taxAmt.toFixed(2)}</span>
+                    <span>VAT incl. ({systemTaxRate}%)</span>
+                    <span>{taxAmt.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-bold pt-2" style={{ borderTop: '1px solid var(--n-divider)', fontFamily: 'var(--n-font-display)' }}>
@@ -665,7 +712,7 @@ export function POSPage() {
               </p>
               {lastSale.tax_amount > 0 && (
                 <p className="text-xs" style={{ color: 'var(--n-info)' }}>
-                  Includes VAT: ₱{lastSale.tax_amount.toFixed(2)}
+                  VAT included: ₱{lastSale.tax_amount.toFixed(2)}
                 </p>
               )}
 

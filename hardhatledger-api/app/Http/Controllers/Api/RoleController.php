@@ -131,4 +131,59 @@ class RoleController extends Controller
 
         return response()->json(['message' => 'Role deleted successfully.']);
     }
+
+    public function rename(Request $request, Role $role): JsonResponse
+    {
+        $protected = ['Super Admin', 'Admin', 'Manager', 'Sales Clerk'];
+        if (in_array($role->name, $protected)) {
+            return response()->json(['message' => 'System roles cannot be renamed.'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255', Rule::unique('roles', 'name')->ignore($role->id)],
+        ]);
+
+        $oldName = $role->name;
+        $role->update(['name' => $validated['name']]);
+
+        AuditService::log('renamed', 'roles', $role->id, ['name' => $oldName], ['name' => $role->name]);
+
+        return response()->json([
+            'data' => [
+                'id' => $role->id,
+                'name' => $role->name,
+                'guard_name' => $role->guard_name,
+                'permissions' => $role->permissions()->pluck('name'),
+                'users_count' => $role->users()->count(),
+                'created_at' => $role->created_at?->toISOString(),
+            ],
+            'message' => 'Role renamed successfully.',
+        ]);
+    }
+
+    public function clone(Request $request, Role $role): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255', Rule::unique('roles', 'name')],
+        ]);
+
+        $newRole = Role::create(['name' => $validated['name'], 'guard_name' => 'web']);
+        $newRole->syncPermissions($role->permissions);
+
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+        AuditService::log('cloned', 'roles', $newRole->id, ['cloned_from' => $role->name], ['name' => $newRole->name]);
+
+        return response()->json([
+            'data' => [
+                'id' => $newRole->id,
+                'name' => $newRole->name,
+                'guard_name' => $newRole->guard_name,
+                'permissions' => $newRole->permissions()->pluck('name'),
+                'users_count' => 0,
+                'created_at' => $newRole->created_at?->toISOString(),
+            ],
+            'message' => "Role \"{$newRole->name}\" created as a copy of \"{$role->name}\".",
+        ], 201);
+    }
 }

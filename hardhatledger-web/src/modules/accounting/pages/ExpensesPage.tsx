@@ -638,7 +638,7 @@ function ExpenseFormModal({
     payee: expense?.payee ?? '',
     supplier_id: (expense?.supplier_id ?? '') as number | '',
     expense_category_id: (expense?.expense_category_id ?? '') as number | '',
-    subtotal: expense?.subtotal?.toString() ?? '',
+    subtotal: expense?.total_amount?.toString() ?? '',
     notes: expense?.notes ?? '',
     payment_method: expense?.payment_method ?? 'cash',
     is_vatable: initialIsVatable,
@@ -646,9 +646,11 @@ function ExpenseFormModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  const subtotalNum = parseFloat(form.subtotal) || 0;
-  const taxAmount = form.is_vatable ? parseFloat((subtotalNum * (systemTaxRate / 100)).toFixed(2)) : 0;
-  const computedTotal = subtotalNum + taxAmount;
+  const computedTotal = parseFloat(form.subtotal) || 0;
+  const taxAmount = form.is_vatable
+    ? parseFloat((computedTotal - computedTotal / (1 + systemTaxRate / 100)).toFixed(2))
+    : 0;
+  const subtotalNum = parseFloat((computedTotal - taxAmount).toFixed(2));
 
   const handleSupplierChange = (supplierId: number | '') => {
     const supplier = suppliers.find((s) => s.id === supplierId);
@@ -664,7 +666,7 @@ function ExpenseFormModal({
     if (!form.date) errs.date = 'Date is required';
     if (!form.payee.trim()) errs.payee = 'Payee is required';
     if (!form.expense_category_id) errs.expense_category_id = 'Category is required';
-    if (!form.subtotal || parseFloat(form.subtotal) <= 0) errs.subtotal = 'Subtotal must be greater than 0';
+    if (!form.subtotal || parseFloat(form.subtotal) <= 0) errs.subtotal = 'Amount must be greater than 0';
     return errs;
   };
 
@@ -852,9 +854,9 @@ function ExpenseFormModal({
             />
           </div>
 
-          {/* Subtotal */}
+          {/* Total Amount */}
           <div>
-            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Amount Before Tax *</label>
+            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Total Amount *</label>
             <Input
               type="number" step="0.01" min="0"
               value={form.subtotal}
@@ -878,19 +880,29 @@ function ExpenseFormModal({
               />
               <span className="text-sm font-medium text-[var(--n-text)]">
                 {form.is_vatable
-                  ? <span className="text-amber-600">VATable — {systemTaxRate}% applied (₱{fmt(taxAmount)})</span>
+                  ? <span className="text-amber-600">VAT-inclusive — {systemTaxRate}% = ₱{fmt(taxAmount)} (base ₱{fmt(subtotalNum)})</span>
                   : <span className="text-[var(--n-text-secondary)]">Non-VAT expense</span>}
               </span>
             </label>
           </div>
 
-          {/* Computed Total */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Total</label>
-            <div className="px-3 py-2 rounded-lg bg-[var(--n-input-bg)] border border-[var(--n-divider)] font-bold text-lg text-[var(--n-text)]">
-              ₱{fmt(computedTotal)}
+          {/* Breakdown (read-only) */}
+          {form.is_vatable && (
+            <div className="col-span-full grid grid-cols-3 gap-2 text-center">
+              <div className="px-3 py-2 rounded-lg bg-[var(--n-input-bg)] border border-[var(--n-divider)]">
+                <p className="text-xs text-[var(--n-text-secondary)] mb-0.5">Base (excl. VAT)</p>
+                <p className="font-semibold text-[var(--n-text)]">₱{fmt(subtotalNum)}</p>
+              </div>
+              <div className="px-3 py-2 rounded-lg bg-[var(--n-input-bg)] border border-[var(--n-divider)]">
+                <p className="text-xs text-[var(--n-text-secondary)] mb-0.5">VAT ({systemTaxRate}%)</p>
+                <p className="font-semibold text-amber-600">₱{fmt(taxAmount)}</p>
+              </div>
+              <div className="px-3 py-2 rounded-lg bg-[var(--n-input-bg)] border border-[var(--n-divider)] border-navy/20">
+                <p className="text-xs text-navy mb-0.5">Total</p>
+                <p className="font-bold text-navy">₱{fmt(computedTotal)}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Notes */}
