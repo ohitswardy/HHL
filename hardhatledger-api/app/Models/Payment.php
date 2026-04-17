@@ -17,6 +17,8 @@ class Payment extends Model
         'status',
         'paid_at',
         'due_date',
+        'notes',
+        'settles_payment_id',
         'branch_id',
     ];
 

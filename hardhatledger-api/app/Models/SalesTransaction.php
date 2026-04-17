@@ -58,7 +58,12 @@ class SalesTransaction extends Model
 
     public function getTotalPaidAttribute(): float
     {
-        return (float) $this->payments()->where('status', 'confirmed')->sum('amount');
+        // Exclude 'credit' entries — they are AR placeholders, not actual money received.
+        // Real collection is tracked by the cash/check/etc. rows that settle them.
+        return (float) $this->payments()
+            ->where('status', 'confirmed')
+            ->where('payment_method', '!=', 'credit')
+            ->sum('amount');
     }
 
     public function getBalanceDueAttribute(): float

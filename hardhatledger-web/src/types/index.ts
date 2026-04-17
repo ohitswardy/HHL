@@ -146,6 +146,8 @@ export interface Payment {
   amount: number;
   reference_number: string | null;
   due_date: string | null;
+  notes: string | null;
+  settles_payment_id: number | null;
   status: 'pending' | 'confirmed' | 'failed';
   paid_at: string | null;
 }

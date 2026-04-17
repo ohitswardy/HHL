@@ -143,12 +143,25 @@ export function POSPage() {
             reference_number: paymentTermsData.referenceNumber || null,
           });
         }
-        paymentsPayload.push({
-          payment_method:   'credit',
-          amount:           Math.max(0, grandTotal - paymentTermsData.downPayment),
-          reference_number: paymentTermsData.referenceNumber || null,
-          due_date:         paymentTermsData.dueDate,
-        });
+        const creditBalance = Math.max(0, grandTotal - paymentTermsData.downPayment);
+        if (paymentTermsData.useInstallments && paymentTermsData.installments.length > 0) {
+          // Create one credit payment per installment
+          paymentTermsData.installments.forEach((inst) => {
+            paymentsPayload.push({
+              payment_method:   'credit',
+              amount:           inst.amount,
+              reference_number: paymentTermsData.referenceNumber || null,
+              due_date:         inst.dueDate,
+            });
+          });
+        } else {
+          paymentsPayload.push({
+            payment_method:   'credit',
+            amount:           creditBalance,
+            reference_number: paymentTermsData.referenceNumber || null,
+            due_date:         paymentTermsData.dueDate,
+          });
+        }
       } else {
         paymentsPayload = [{ payment_method: paymentMethod, amount: grandTotal }];
       }
@@ -428,7 +441,10 @@ export function POSPage() {
               >
                 <HiClock className="w-4 h-4 shrink-0" />
                 <span className="flex-1 text-left">
-                  Net {paymentTermsData.termsDays}d — Due {paymentTermsData.dueDate}
+                  {paymentTermsData.useInstallments && paymentTermsData.installments.length > 0
+                    ? `${paymentTermsData.installments.length} installments — ₱${paymentTermsData.installments.reduce((s, i) => s + i.amount, 0).toFixed(2)}`
+                    : `Net ${paymentTermsData.termsDays}d — Due ${paymentTermsData.dueDate}`
+                  }
                   {paymentTermsData.downPayment > 0 && ` — Down ₱${paymentTermsData.downPayment.toFixed(2)}`}
                 </span>
                 <span className="underline">Edit</span>
@@ -486,7 +502,10 @@ export function POSPage() {
               <span style={{ color: 'var(--n-text-secondary)' }}>Payment</span>
               {paymentMethod === 'payment_terms' && paymentTermsData ? (
                 <span className="font-medium" style={{ color: 'var(--n-accent)' }}>
-                  Net {paymentTermsData.termsDays}d — due {paymentTermsData.dueDate}
+                  {paymentTermsData.useInstallments && paymentTermsData.installments.length > 0
+                    ? `${paymentTermsData.installments.length}-installment plan`
+                    : `Net ${paymentTermsData.termsDays}d — due ${paymentTermsData.dueDate}`
+                  }
                 </span>
               ) : (
                 <span className="font-medium" style={{ textTransform: 'capitalize' }}>{paymentMethod.replace('_', ' ')}</span>
@@ -530,14 +549,31 @@ export function POSPage() {
           </div>
           {paymentMethod === 'payment_terms' && paymentTermsData && (
             <div className="rounded-lg px-3 py-2 text-xs space-y-1" style={{ background: 'var(--n-surface-raised, var(--n-surface))', border: '1px solid var(--n-accent)' }}>
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--n-text-secondary)' }}>Terms</span>
-                <span className="font-medium" style={{ color: 'var(--n-accent)' }}>Net {paymentTermsData.termsDays}d</span>
-              </div>
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--n-text-secondary)' }}>Due Date</span>
-                <span className="font-medium">{paymentTermsData.dueDate}</span>
-              </div>
+              {paymentTermsData.useInstallments && paymentTermsData.installments.length > 0 ? (
+                <>
+                  <div className="flex justify-between">
+                    <span style={{ color: 'var(--n-text-secondary)' }}>Terms</span>
+                    <span className="font-medium" style={{ color: 'var(--n-accent)' }}>{paymentTermsData.installments.length}-installment plan</span>
+                  </div>
+                  {paymentTermsData.installments.map((inst, idx) => (
+                    <div key={idx} className="flex justify-between">
+                      <span style={{ color: 'var(--n-text-secondary)' }}>Installment {idx + 1} — due {inst.dueDate}</span>
+                      <span className="font-medium">₱{inst.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between">
+                    <span style={{ color: 'var(--n-text-secondary)' }}>Terms</span>
+                    <span className="font-medium" style={{ color: 'var(--n-accent)' }}>Net {paymentTermsData.termsDays}d</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span style={{ color: 'var(--n-text-secondary)' }}>Due Date</span>
+                    <span className="font-medium">{paymentTermsData.dueDate}</span>
+                  </div>
+                </>
+              )}
               {paymentTermsData.downPayment > 0 && (
                 <div className="flex justify-between">
                   <span style={{ color: 'var(--n-text-secondary)' }}>Down Payment ({paymentTermsData.downPaymentMethod})</span>
@@ -601,7 +637,10 @@ export function POSPage() {
         onConfirm={(data) => {
           setPaymentTermsData(data);
           setPaymentTermsModal(false);
-          toast.success(`Terms set: Net ${data.termsDays}d — due ${data.dueDate}`);
+          toast.success(data.useInstallments && data.installments.length > 0
+            ? `Terms set: ${data.installments.length}-installment plan — first due ${data.dueDate}`
+            : `Terms set: Net ${data.termsDays}d — due ${data.dueDate}`
+          );
         }}
         totalAmount={cart.getTotal() + (cart.fulfillmentType === 'delivery' ? (parseFloat(deliveryFee) || 0) : 0)}
         initialData={paymentTermsData}
@@ -610,9 +649,10 @@ export function POSPage() {
       {/* Receipt Modal */}
       <Modal isOpen={receiptModal} onClose={() => setReceiptModal(false)} title="Sale Complete" width="md">
         {lastSale && (() => {
-          const creditPayment = lastSale.payments?.find((p) => p.payment_method === 'credit');
-          const downPayments  = lastSale.payments?.filter((p) => p.payment_method !== 'credit') ?? [];
-          const isTermsSale   = !!creditPayment;
+          const creditPayments = lastSale.payments?.filter((p) => p.payment_method === 'credit') ?? [];
+          const downPayments   = lastSale.payments?.filter((p) => p.payment_method !== 'credit') ?? [];
+          const isTermsSale    = creditPayments.length > 0;
+          const isInstallment  = creditPayments.length > 1;
           return (
             <div className="text-center space-y-4">
               <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ background: 'var(--n-success-glow)' }}>
@@ -632,23 +672,42 @@ export function POSPage() {
               {/* Payment Terms summary block */}
               {isTermsSale && (
                 <div className="text-left rounded-lg px-4 py-3 space-y-1.5 text-sm" style={{ background: 'var(--n-surface-raised, var(--n-surface))', border: '1px solid var(--n-accent)' }}>
-                  <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--n-accent)' }}>Payment Terms Applied</p>
-                  {creditPayment?.due_date && (
-                    <div className="flex justify-between">
-                      <span style={{ color: 'var(--n-text-secondary)' }}>Due Date</span>
-                      <span className="font-semibold">{creditPayment.due_date}</span>
-                    </div>
-                  )}
+                  <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--n-accent)' }}>
+                    {isInstallment ? 'Installment Plan Applied' : 'Payment Terms Applied'}
+                  </p>
                   {downPayments.length > 0 && downPayments.map((dp) => (
                     <div key={dp.id} className="flex justify-between">
                       <span style={{ color: 'var(--n-text-secondary)' }}>Down Payment ({dp.payment_method.replace('_', ' ')})</span>
                       <span className="font-semibold" style={{ color: 'var(--n-success)' }}>₱{dp.amount.toFixed(2)}</span>
                     </div>
                   ))}
-                  <div className="flex justify-between pt-1" style={{ borderTop: '1px solid var(--n-divider)' }}>
-                    <span style={{ color: 'var(--n-text-secondary)' }}>Balance on Credit</span>
-                    <span className="font-bold text-amber-dark">₱{creditPayment.amount.toFixed(2)}</span>
-                  </div>
+                  {isInstallment ? (
+                    creditPayments.map((cp, idx) => (
+                      <div key={cp.id} className="flex justify-between">
+                        <span style={{ color: 'var(--n-text-secondary)' }}>Installment {idx + 1} — due {cp.due_date ?? '—'}</span>
+                        <span className="font-semibold text-amber-dark">₱{cp.amount.toFixed(2)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      {creditPayments[0]?.due_date && (
+                        <div className="flex justify-between">
+                          <span style={{ color: 'var(--n-text-secondary)' }}>Due Date</span>
+                          <span className="font-semibold">{creditPayments[0].due_date}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between pt-1" style={{ borderTop: '1px solid var(--n-divider)' }}>
+                        <span style={{ color: 'var(--n-text-secondary)' }}>Balance on Credit</span>
+                        <span className="font-bold text-amber-dark">₱{creditPayments[0]?.amount.toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
+                  {isInstallment && (
+                    <div className="flex justify-between pt-1 font-bold" style={{ borderTop: '1px solid var(--n-divider)' }}>
+                      <span style={{ color: 'var(--n-text-secondary)' }}>Total on Credit</span>
+                      <span className="text-amber-dark">₱{creditPayments.reduce((s, p) => s + p.amount, 0).toFixed(2)}</span>
+                    </div>
+                  )}
                   <p className="text-xs pt-1" style={{ color: 'var(--n-text-dim)' }}>
                     Status is <strong>Pending</strong> — mark as Completed once payment is received.
                   </p>

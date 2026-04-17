@@ -827,8 +827,12 @@ class AccountingController extends Controller
         // with a visual indicator, but they are excluded from financial totals —
         // matching exactly what the PDF statement already does.
         $totalCharges = $transactions->where('status', '!=', 'voided')->sum('total_amount');
+        // Exclude 'credit' rows — they are AR placeholders, not real money received.
+        // Confirmed credit rows appear when a collected payment settled an installment;
+        // the actual cash/check receipt is tracked by the separate non-credit payment row.
         $totalPayments = $transactions->flatMap->payments
             ->where('status', 'confirmed')
+            ->where('payment_method', '!=', 'credit')
             ->sum('amount');
 
         return response()->json([
@@ -847,7 +851,7 @@ class AccountingController extends Controller
                 'transaction_number' => $t->transaction_number,
                 'date' => $t->created_at->toDateString(),
                 'total_amount' => (float) $t->total_amount,
-                'total_paid' => (float) $t->payments->where('status', 'confirmed')->sum('amount'),
+                'total_paid' => (float) $t->payments->where('status', 'confirmed')->where('payment_method', '!=', 'credit')->sum('amount'),
                 'status' => $t->status,
                 'is_voided' => $t->status === 'voided',
             ]),
@@ -878,7 +882,7 @@ class AccountingController extends Controller
         $transactions = $query->orderBy('created_at')->get();
 
         $totalCharges  = $transactions->where('status', '!=', 'voided')->sum('total_amount');
-        $totalPayments = $transactions->flatMap->payments->where('status', 'confirmed')->sum('amount');
+        $totalPayments = $transactions->flatMap->payments->where('status', 'confirmed')->where('payment_method', '!=', 'credit')->sum('amount');
         $periodBalance = $totalCharges - $totalPayments;
 
         $pdf = Pdf::loadView('reports.client-statement', [

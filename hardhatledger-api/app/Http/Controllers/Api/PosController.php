@@ -182,6 +182,15 @@ class PosController extends Controller
             $query->whereHas('payments', fn ($q) => $q->where('payment_method', $paymentMethod));
         }
 
+        if ($request->boolean('overdue')) {
+            $today = now()->toDateString();
+            $query->whereHas('payments', function ($q) use ($today) {
+                $q->where('payment_method', 'credit')
+                  ->where('status', 'pending')
+                  ->whereDate('due_date', '<', $today);
+            });
+        }
+
         $transactions = $query->orderByDesc('created_at')
             ->paginate($request->get('per_page', 20));
 
@@ -257,20 +266,26 @@ class PosController extends Controller
             ->whereIn('payment_method', ['bank_transfer', 'check', 'credit', 'business_bank'])
             ->update(['status' => 'confirmed', 'paid_at' => now()]);
 
-        // Post DR Cash/Bank / CR AR for each confirmed deferred payment
+        // Post DR Cash/Bank / CR AR for each confirmed deferred payment.
+        // Skip credit-method rows — they are AR placeholders whose journal entry was
+        // already created in postSaleEntry (DR AR). Actual cash receipt is posted by
+        // postPaymentEntry when the real cash/check payment is recorded via recordPayment.
         foreach ($pendingDeferredPayments as $deferredPayment) {
+            if ($deferredPayment->payment_method === 'credit') {
+                continue;
+            }
             $deferredPayment->refresh();
             $this->journalService->postPaymentEntry($deferredPayment);
         }
 
-        // Clear outstanding balance for the now-confirmed deferred payments
+        // Decrement outstanding balance only for the payments that were PENDING before
+        // this call. Using the pre-captured collection avoids double-decrementing amounts
+        // that recordPayment already decremented (for confirmed cash/card collections).
         if ($sale->client_id) {
             $sale->load('client');
-            $deferredAmount = $sale->payments()
-                ->whereIn('payment_method', ['bank_transfer', 'check', 'credit', 'business_bank'])
-                ->sum('amount');
-            if ($deferredAmount > 0) {
-                $sale->client->decrement('outstanding_balance', $deferredAmount);
+            $amountBeingConfirmed = $pendingDeferredPayments->sum('amount');
+            if ($amountBeingConfirmed > 0) {
+                $sale->client->decrement('outstanding_balance', $amountBeingConfirmed);
             }
         }
 
@@ -292,6 +307,8 @@ class PosController extends Controller
             'payment_method'   => ['required', 'in:cash,card,bank_transfer,check,business_bank'],
             'amount'           => ['required', 'numeric', 'min:0.01'],
             'reference_number' => ['nullable', 'string', 'max:100'],
+            'notes'            => ['nullable', 'string', 'max:500'],
+            'target_payment_id' => ['nullable', 'integer'],
         ]);
 
         $balanceDue = $sale->balance_due;
@@ -300,7 +317,21 @@ class PosController extends Controller
             return response()->json(['message' => "Payment amount exceeds balance due (₱" . number_format($balanceDue, 2) . ")."], 422);
         }
 
-        DB::transaction(function () use ($request, $sale, $balanceDue) {
+        // Validate target_payment_id if provided
+        $targetCreditPayment = null;
+        if ($request->filled('target_payment_id')) {
+            $targetCreditPayment = $sale->payments()
+                ->where('id', $request->target_payment_id)
+                ->where('payment_method', 'credit')
+                ->where('status', 'pending')
+                ->first();
+
+            if (!$targetCreditPayment) {
+                return response()->json(['message' => 'Target installment not found or already settled.'], 422);
+            }
+        }
+
+        DB::transaction(function () use ($request, $sale, $balanceDue, $targetCreditPayment) {
             $isPending = in_array($request->payment_method, ['bank_transfer', 'check', 'business_bank']);
 
             // Create the new payment record
@@ -308,6 +339,7 @@ class PosController extends Controller
                 'payment_method'   => $request->payment_method,
                 'amount'           => $request->amount,
                 'reference_number' => $request->reference_number,
+                'notes'            => $request->notes,
                 'status'           => $isPending ? 'pending' : 'confirmed',
                 'paid_at'          => $isPending ? null : now(),
                 'branch_id'        => $sale->branch_id ?? 1,
@@ -318,8 +350,20 @@ class PosController extends Controller
                 $this->journalService->postPaymentEntry($payment);
             }
 
-            // Decrement client outstanding balance for the amount being paid
-            if ($sale->client_id) {
+            // Mark the targeted credit installment as confirmed (settled)
+            if ($targetCreditPayment) {
+                $targetCreditPayment->update([
+                    'status'  => 'confirmed',
+                    'paid_at' => now(),
+                ]);
+                // Link the collected payment back to the installment it settles
+                $payment->update(['settles_payment_id' => $targetCreditPayment->id]);
+            }
+
+            // Decrement outstanding balance only for payments confirmed immediately (cash/card).
+            // Pending payments (check, bank_transfer, business_bank) are decremented later
+            // when markCompleted confirms them. This prevents double-decrementing.
+            if ($sale->client_id && !$isPending) {
                 $sale->load('client');
                 $sale->client->decrement('outstanding_balance', min($request->amount, $balanceDue));
             }
@@ -334,6 +378,33 @@ class PosController extends Controller
                 // They are AR tracking entries — the new cash/card payment is the actual receipt.
             }
         });
+
+        $sale->load(['client.tier', 'user', 'items.product', 'payments']);
+        return response()->json(['data' => new SalesTransactionResource($sale)]);
+    }
+
+    public function updateCreditDueDate(Request $request, SalesTransaction $sale): JsonResponse
+    {
+        if ($sale->status === 'voided') {
+            return response()->json(['message' => 'Cannot update a voided transaction.'], 422);
+        }
+
+        $request->validate([
+            'payment_id' => ['required', 'integer'],
+            'due_date'   => ['required', 'date'],
+        ]);
+
+        $payment = $sale->payments()
+            ->where('id', $request->payment_id)
+            ->where('payment_method', 'credit')
+            ->where('status', 'pending')
+            ->first();
+
+        if (!$payment) {
+            return response()->json(['message' => 'Credit payment not found or already settled.'], 422);
+        }
+
+        $payment->update(['due_date' => $request->due_date]);
 
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
         return response()->json(['data' => new SalesTransactionResource($sale)]);
@@ -421,6 +492,7 @@ class PosController extends Controller
             ->whereDate('sales_transactions.created_at', $date)
             ->where('sales_transactions.status', 'completed')
             ->where('payments.status', 'confirmed')
+            ->where('payments.payment_method', '!=', 'credit') // credit rows are AR placeholders, not cash receipts
             ->select('payments.payment_method', DB::raw('SUM(payments.amount) as total'))
             ->groupBy('payments.payment_method')
             ->get();

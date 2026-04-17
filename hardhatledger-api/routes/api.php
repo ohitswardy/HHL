@@ -144,6 +144,7 @@ Route::prefix('v1')->group(function () {
             Route::middleware('permission:pos.void-sale')->patch('/sales/{sale}', [PosController::class, 'updateSale']);
             Route::middleware('permission:pos.access')->patch('/sales/{sale}/complete', [PosController::class, 'markCompleted']);
             Route::middleware('permission:pos.access')->post('/sales/{sale}/record-payment', [PosController::class, 'recordPayment']);
+            Route::middleware('permission:pos.access')->patch('/sales/{sale}/credit-due-date', [PosController::class, 'updateCreditDueDate']);
             Route::middleware('permission:pos.view-daily-summary')->get('/daily-summary', [PosController::class, 'dailySummary']);
         });
 

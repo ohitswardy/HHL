@@ -48,8 +48,10 @@ class SalesTransactionResource extends JsonResource
                     'amount' => (float) $p->amount,
                     'reference_number' => $p->reference_number,
                     'due_date'         => $p->due_date?->toDateString(),
-                    'status'           => $p->status,
-                    'paid_at'          => $p->paid_at?->toISOString(),
+                    'notes'              => $p->notes,
+                    'settles_payment_id' => $p->settles_payment_id,
+                    'status'             => $p->status,
+                    'paid_at'            => $p->paid_at?->toISOString(),
                 ])
             ),
             'created_at' => $this->created_at?->toISOString(),

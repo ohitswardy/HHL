@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
-import { DateRangePicker } from '../../../components/ui/DatePicker';
+import { DateRangePicker, DatePicker } from '../../../components/ui/DatePicker';
 import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiSearch, HiDocumentDownload, HiChevronDown, HiPrinter, HiChevronLeft, HiChevronRight, HiCheck, HiBan, HiExclamation, HiPencilAlt, HiEye, HiCash } from 'react-icons/hi';
+import { HiSearch, HiDocumentDownload, HiChevronDown, HiPrinter, HiChevronLeft, HiChevronRight, HiCheck, HiBan, HiExclamation, HiPencilAlt, HiEye, HiCash, HiCalendar } from 'react-icons/hi';
 import dayjs from 'dayjs';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
@@ -61,6 +61,14 @@ export function TransactionsPage() {
   const [rpAmount, setRpAmount] = useState('');
   const [rpReference, setRpReference] = useState('');
   const [rpSaving, setRpSaving] = useState(false);
+  const [rpNotes, setRpNotes] = useState('');
+  // 'full' = pay entire balance, number = target a specific installment payment ID
+  const [rpTarget, setRpTarget] = useState<'full' | number>('full');
+
+  // Update credit due date
+  const [updateDueDateTx, setUpdateDueDateTx] = useState<SalesTransaction | null>(null);
+  const [updatedDueDates, setUpdatedDueDates] = useState<Record<number, string>>({});
+  const [dueDateSaving, setDueDateSaving] = useState(false);
 
   // Close export dropdown on outside click
   useEffect(() => {
@@ -79,7 +87,11 @@ export function TransactionsPage() {
     setLoading(true);
     const params: Record<string, unknown> = { page, per_page: 20, from: dateFrom, to: dateTo };
     if (search) params.search = search;
-    if (statusFilter) params.status = statusFilter;
+    if (statusFilter === 'overdue') {
+      params.overdue = 1;
+    } else if (statusFilter) {
+      params.status = statusFilter;
+    }
     if (fulfillmentFilter) params.fulfillment_type = fulfillmentFilter;
     if (paymentFilter) params.payment_method = paymentFilter;
 
@@ -269,8 +281,19 @@ export function TransactionsPage() {
       const full: SalesTransaction = res.data.data;
       setRecordingPaymentTx(full);
       setRpMethod('cash');
-      setRpAmount((full.balance_due ?? 0).toFixed(2));
       setRpReference('');
+      setRpNotes('');
+      // Default: if there are installments, pre-select the earliest pending one; else pay full
+      const pendingCredits = (full.payments ?? [])
+        .filter(p => p.payment_method === 'credit' && p.status === 'pending')
+        .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''));
+      if (pendingCredits.length > 1) {
+        setRpTarget(pendingCredits[0].id);
+        setRpAmount(pendingCredits[0].amount.toFixed(2));
+      } else {
+        setRpTarget('full');
+        setRpAmount((full.balance_due ?? 0).toFixed(2));
+      }
     } catch {
       toast.error('Failed to load transaction');
     }
@@ -280,15 +303,18 @@ export function TransactionsPage() {
     if (!recordingPaymentTx) return;
     setRpSaving(true);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         payment_method: rpMethod,
         amount: parseFloat(rpAmount) || 0,
         reference_number: rpReference.trim() || null,
+        notes: rpNotes.trim() || null,
       };
+      if (typeof rpTarget === 'number') {
+        payload.target_payment_id = rpTarget;
+      }
       const res = await api.post(`/pos/sales/${recordingPaymentTx.id}/record-payment`, payload);
       const updated = res.data.data;
       setTransactions((prev) => prev.map((t) => t.id === recordingPaymentTx.id ? updated : t));
-      // Also update viewingTx if it's open for the same transaction
       if (viewingTx?.id === recordingPaymentTx.id) {
         setViewingTx(updated);
       }
@@ -300,6 +326,64 @@ export function TransactionsPage() {
       setRpSaving(false);
     }
   };
+
+  const openUpdateDueDate = async (tx: SalesTransaction) => {
+    try {
+      const res = await api.get(`/pos/sales/${tx.id}`);
+      const full: SalesTransaction = res.data.data;
+      setUpdateDueDateTx(full);
+      const initialDates: Record<number, string> = {};
+      (full.payments ?? [])
+        .filter(p => p.payment_method === 'credit' && p.status === 'pending')
+        .forEach(p => { if (p.due_date) initialDates[p.id] = p.due_date; });
+      setUpdatedDueDates(initialDates);
+    } catch {
+      toast.error('Failed to load transaction');
+    }
+  };
+
+  const handleUpdateDueDates = async () => {
+    if (!updateDueDateTx) return;
+    setDueDateSaving(true);
+    try {
+      const creditPayments = (updateDueDateTx.payments ?? [])
+        .filter(p => p.payment_method === 'credit' && p.status === 'pending');
+      await Promise.all(
+        creditPayments.map(p => {
+          const newDate = updatedDueDates[p.id];
+          if (newDate) {
+            return api.patch(`/pos/sales/${updateDueDateTx.id}/credit-due-date`, {
+              payment_id: p.id,
+              due_date: newDate,
+            });
+          }
+          return Promise.resolve(null);
+        })
+      );
+      const res = await api.get(`/pos/sales/${updateDueDateTx.id}`);
+      const updated = res.data.data;
+      setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t));
+      if (viewingTx?.id === updated.id) setViewingTx(updated);
+      toast.success('Due date updated');
+      setUpdateDueDateTx(null);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to update due date');
+    } finally {
+      setDueDateSaving(false);
+    }
+  };
+
+  // ── Overdue helpers ──
+  const getCreditDueDate = (tx: SalesTransaction): string | null =>
+    tx.payments?.find(p => p.payment_method === 'credit' && p.status === 'pending')?.due_date ?? null;
+
+  const isTxOverdue = (tx: SalesTransaction): boolean => {
+    const d = getCreditDueDate(tx);
+    return !!d && d < localDateStr();
+  };
+
+  const hasPendingCredit = (tx: SalesTransaction): boolean =>
+    (tx.payments ?? []).some(p => p.payment_method === 'credit' && p.status === 'pending');
 
   const getPageNumbers = (current: number, total: number): (number | null)[] => {
     if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -435,6 +519,7 @@ export function TransactionsPage() {
                 { value: 'pending', label: 'Pending' },
                 { value: 'completed', label: 'Completed' },
                 { value: 'voided', label: 'Voided' },
+                { value: 'overdue', label: '⚠ Overdue Credit' },
               ]}
             />
           </div>
@@ -553,9 +638,14 @@ export function TransactionsPage() {
                       </Badge>
                     </td>
                     <td>
-                      <Badge variant={tx.status === 'completed' ? 'success' : tx.status === 'pending' ? 'warning' : tx.status === 'voided' ? 'danger' : 'neutral'}>
-                        {tx.status}
-                      </Badge>
+                      <div className="flex flex-col gap-1 items-start">
+                        <Badge variant={tx.status === 'completed' ? 'success' : tx.status === 'pending' ? 'warning' : tx.status === 'voided' ? 'danger' : 'neutral'}>
+                          {tx.status}
+                        </Badge>
+                        {isTxOverdue(tx) && (
+                          <Badge variant="danger">Overdue</Badge>
+                        )}
+                      </div>
                     </td>
                     <td style={{ color: 'var(--n-text-secondary)', textTransform: 'capitalize' }}>
                       {tx.payments?.map((p) => {
@@ -588,6 +678,15 @@ export function TransactionsPage() {
                             >
                               <HiCash className="w-4 h-4" />
                             </button>
+                            {hasPendingCredit(tx) && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openUpdateDueDate(tx); }}
+                                className="neu-btn-icon warning"
+                                title="Update Due Date"
+                              >
+                                <HiCalendar className="w-4 h-4" />
+                              </button>
+                            )}
                             <button
                               onClick={() => setConfirmAction({ type: 'complete', transaction: tx })}
                               disabled={updatingId === tx.id}
@@ -691,38 +790,122 @@ export function TransactionsPage() {
           </div>
 
           {/* Payment rows */}
-          {(viewingTx.payments ?? []).length > 0 && (
-            <div className="mb-5 rounded-lg overflow-hidden border border-[var(--n-divider)]">
-              <table className="neu-table">
-                <thead>
-                  <tr>
-                    <th>Payment Method</th>
-                    <th className="text-right">Amount</th>
-                    <th>Reference #</th>
-                    <th>Due Date</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(viewingTx.payments ?? []).map((p) => (
-                    <tr key={p.id}>
-                      <td style={{ textTransform: 'capitalize' }}>{p.payment_method.replace('_', ' ')}</td>
-                      <td className="text-right font-semibold">₱{p.amount.toFixed(2)}</td>
-                      <td style={{ color: 'var(--n-text-secondary)' }}>{p.reference_number || '—'}</td>
-                      <td style={{ color: p.due_date ? 'var(--n-accent)' : 'var(--n-text-dim)', fontWeight: p.due_date ? 600 : 400 }}>
-                        {p.due_date ?? '—'}
-                      </td>
-                      <td>
-                        <Badge variant={p.status === 'confirmed' ? 'success' : p.status === 'pending' ? 'warning' : 'danger'}>
-                          {p.status}
-                        </Badge>
-                      </td>
+          {(viewingTx.payments ?? []).length > 0 && (() => {
+            const allPayments = viewingTx.payments ?? [];
+            // Build "For" labels
+            const creditPayments = allPayments
+              .filter(p => p.payment_method === 'credit')
+              .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''));
+            const isInstallmentSale = creditPayments.length > 1;
+
+            const getCreditLabel = (p: typeof allPayments[0]) => {
+              const idx = creditPayments.findIndex(c => c.id === p.id);
+              if (isInstallmentSale) return `Installment ${idx + 1}`;
+              return 'Credit (full)';
+            };
+
+            // Positional fallback: for legacy payments with no settles_payment_id,
+            // match unlinked confirmed non-credit payments to confirmed credit installments
+            // in order of the credit installment's due date.
+            const unlinkedCollected = allPayments.filter(
+              p => p.payment_method !== 'credit' && p.settles_payment_id == null
+            );
+            const confirmedInstallments = creditPayments.filter(c => c.status === 'confirmed');
+            // Build a map: collected payment id → installment it positionally matches
+            const positionalMap = new Map<number, typeof allPayments[0]>();
+            if (unlinkedCollected.length > 0 && confirmedInstallments.length > 0) {
+              // Only do positional match when the counts are equal and every amount matches
+              const amountsSorted = [...unlinkedCollected].map(p => p.amount).sort((a,b) => a-b);
+              const installAmountsSorted = [...confirmedInstallments].map(c => c.amount).sort((a,b) => a-b);
+              const allMatch = amountsSorted.length === installAmountsSorted.length &&
+                amountsSorted.every((a, i) => Math.abs(a - installAmountsSorted[i]) < 0.01);
+              if (allMatch) {
+                // Sort both by amount then by id (stable ordering)
+                const sortedCollected = [...unlinkedCollected].sort((a,b) => a.amount - b.amount || a.id - b.id);
+                const sortedInstallments = [...confirmedInstallments].sort((a,b) => a.amount - b.amount || (a.due_date ?? '').localeCompare(b.due_date ?? ''));
+                sortedCollected.forEach((cp, i) => positionalMap.set(cp.id, sortedInstallments[i]));
+              }
+            }
+
+            const getPaymentLabel = (p: typeof allPayments[0]) => {
+              // Credit entries label themselves
+              if (p.payment_method === 'credit') return getCreditLabel(p);
+              // Collected payments linked to a specific installment (new data with settles_payment_id)
+              if (p.settles_payment_id != null) {
+                const settled = creditPayments.find(c => c.id === p.settles_payment_id);
+                if (settled) {
+                  const idx = creditPayments.indexOf(settled);
+                  return isInstallmentSale ? `Installment ${idx + 1}` : 'Credit (full)';
+                }
+              }
+              // Legacy data: use positional match if available
+              if (positionalMap.has(p.id)) {
+                const matched = positionalMap.get(p.id)!;
+                const idx = creditPayments.indexOf(matched);
+                return isInstallmentSale ? `Installment ${idx + 1}` : 'Credit (full)';
+              }
+              // Final fallback: down payment (no installments) or generic collection
+              const saleDate = viewingTx.created_at?.slice(0, 10);
+              const isOriginalPayment = p.paid_at?.slice(0, 10) === saleDate || p.paid_at === null;
+              if (isOriginalPayment && creditPayments.length === 0) return 'Down Payment';
+              return creditPayments.length > 0 ? 'Full Settlement' : 'Payment Collected';
+            };
+            return (
+              <div className="mb-5 rounded-lg overflow-hidden border border-[var(--n-divider)]">
+                <table className="neu-table">
+                  <thead>
+                    <tr>
+                      <th>Method</th>
+                      <th>For</th>
+                      <th className="text-right">Amount</th>
+                      <th>Reference #</th>
+                      <th>Due Date</th>
+                      <th>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {allPayments.map((p) => (
+                      <>
+                        <tr key={p.id}>
+                          <td style={{ textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
+                            {p.payment_method.replace(/_/g, ' ')}
+                          </td>
+                          <td style={{ color: 'var(--n-text-secondary)', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
+                            {getPaymentLabel(p)}
+                          </td>
+                          <td className="text-right font-semibold">₱{p.amount.toFixed(2)}</td>
+                          <td style={{ color: 'var(--n-text-secondary)' }}>{p.reference_number || '—'}</td>
+                          <td style={{
+                            color: p.due_date && p.due_date < localDateStr() && p.status === 'pending'
+                              ? 'var(--n-danger)'
+                              : p.due_date ? 'var(--n-accent)' : 'var(--n-text-dim)',
+                            fontWeight: p.due_date ? 600 : 400,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {p.due_date ?? '—'}
+                            {p.due_date && p.due_date < localDateStr() && p.status === 'pending' && ' ⚠'}
+                          </td>
+                          <td>
+                            <Badge variant={p.status === 'confirmed' ? 'success' : p.status === 'pending' ? 'warning' : 'danger'}>
+                              {p.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                        {p.notes && (
+                          <tr key={`${p.id}-notes`} style={{ background: 'var(--n-input-bg)' }}>
+                            <td colSpan={6} style={{ padding: '4px 12px 6px', fontSize: '0.78rem', color: 'var(--n-text-secondary)', borderTop: 'none' }}>
+                              <span style={{ color: 'var(--n-text-dim)', marginRight: 6, fontStyle: 'italic' }}>Note:</span>
+                              {p.notes}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
 
           {/* Notes */}
           {viewingTx.notes && (
@@ -824,12 +1007,22 @@ export function TransactionsPage() {
             <div className="flex gap-3">
               <Button variant="secondary" onClick={() => setViewingTx(null)}>Close</Button>
               {viewingTx.status === 'pending' && (viewingTx.balance_due ?? 0) > 0 && (
-                <Button
-                  variant="primary"
-                  onClick={() => { setViewingTx(null); openRecordPayment(viewingTx); }}
-                >
-                  <HiCash className="w-4 h-4 mr-2" /> Record Payment
-                </Button>
+                <>
+                  {hasPendingCredit(viewingTx) && (
+                    <Button
+                      variant="outline"
+                      onClick={() => { setViewingTx(null); openUpdateDueDate(viewingTx); }}
+                    >
+                      <HiCalendar className="w-4 h-4 mr-2" /> Update Due Date
+                    </Button>
+                  )}
+                  <Button
+                    variant="primary"
+                    onClick={() => { setViewingTx(null); openRecordPayment(viewingTx); }}
+                  >
+                    <HiCash className="w-4 h-4 mr-2" /> Record Payment
+                  </Button>
+                </>
               )}
               {viewingTx.status !== 'voided' && (
                 <Button
@@ -1033,77 +1226,259 @@ export function TransactionsPage() {
         title="Record Payment"
         width="sm"
       >
-        {recordingPaymentTx && (
-          <div className="space-y-4">
-            {/* Transaction summary */}
-            <div className="rounded-lg p-3 space-y-1 text-sm" style={{ background: 'var(--n-input-bg)' }}>
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--n-text-secondary)' }}>Transaction</span>
-                <span className="font-mono font-semibold">{recordingPaymentTx.transaction_number}</span>
-              </div>
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--n-text-secondary)' }}>Total Amount</span>
-                <span>₱{recordingPaymentTx.total_amount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--n-text-secondary)' }}>Already Paid</span>
-                <span className="text-green-700">₱{(recordingPaymentTx.total_paid ?? 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold pt-1" style={{ borderTop: '1px solid var(--n-divider)' }}>
-                <span style={{ color: 'var(--n-danger)' }}>Balance Due</span>
-                <span style={{ color: 'var(--n-danger)' }}>₱{(recordingPaymentTx.balance_due ?? 0).toFixed(2)}</span>
-              </div>
-            </div>
+        {recordingPaymentTx && (() => {
+          const pendingCredits = (recordingPaymentTx.payments ?? [])
+            .filter(p => p.payment_method === 'credit' && p.status === 'pending')
+            .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''));
+          const isInstallmentSale = pendingCredits.length > 1;
+          const today = localDateStr();
 
-            {/* Payment method */}
-            <Select
-              label="Payment Method"
-              value={rpMethod}
-              onChange={(e) => setRpMethod(e.target.value)}
-              options={[
-                { value: 'cash', label: 'Cash' },
-                { value: 'card', label: 'Card' },
-                { value: 'bank_transfer', label: 'Bank Transfer' },
-                { value: 'check', label: 'Check' },
-              ]}
-            />
+          const handleTargetChange = (target: 'full' | number) => {
+            setRpTarget(target);
+            if (target === 'full') {
+              setRpAmount((recordingPaymentTx.balance_due ?? 0).toFixed(2));
+            } else {
+              const inst = pendingCredits.find(p => p.id === target);
+              if (inst) setRpAmount(inst.amount.toFixed(2));
+            }
+          };
 
-            {/* Amount */}
-            <Input
-              label="Amount"
-              type="number"
-              min="0.01"
-              step="0.01"
-              max={(recordingPaymentTx.balance_due ?? 0).toFixed(2)}
-              value={rpAmount}
-              onChange={(e) => setRpAmount(e.target.value)}
-              placeholder="0.00"
-            />
+          return (
+            <div className="space-y-4">
+              {/* Transaction summary */}
+              <div className="rounded-lg p-3 space-y-1 text-sm" style={{ background: 'var(--n-input-bg)' }}>
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--n-text-secondary)' }}>Transaction</span>
+                  <span className="font-mono font-semibold">{recordingPaymentTx.transaction_number}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--n-text-secondary)' }}>Total Amount</span>
+                  <span>₱{recordingPaymentTx.total_amount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--n-text-secondary)' }}>Already Paid</span>
+                  <span className="text-green-700">₱{(recordingPaymentTx.total_paid ?? 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-bold pt-1" style={{ borderTop: '1px solid var(--n-divider)' }}>
+                  <span style={{ color: 'var(--n-danger)' }}>Balance Due</span>
+                  <span style={{ color: 'var(--n-danger)' }}>₱{(recordingPaymentTx.balance_due ?? 0).toFixed(2)}</span>
+                </div>
+              </div>
 
-            {/* Reference number */}
-            {(rpMethod === 'bank_transfer' || rpMethod === 'check') && (
-              <Input
-                label="Reference Number"
-                value={rpReference}
-                onChange={(e) => setRpReference(e.target.value)}
-                placeholder="e.g. BDO Transfer Ref# 12345"
+              {/* ── Installment / Payment target selector ── */}
+              {isInstallmentSale ? (
+                <div>
+                  <label className="neu-label">What is being paid?</label>
+                  <div className="space-y-2">
+                    {pendingCredits.map((p, idx) => {
+                      const overdue = p.due_date && p.due_date < today;
+                      const selected = rpTarget === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleTargetChange(p.id)}
+                          className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-left transition-all"
+                          style={{
+                            background: selected ? 'var(--n-primary-glow, rgba(27,58,92,0.15))' : 'var(--n-input-bg)',
+                            border: selected ? '2px solid var(--n-primary)' : '2px solid var(--n-border)',
+                          }}
+                        >
+                          <span
+                            className="w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center"
+                            style={{
+                              borderColor: selected ? 'var(--n-primary)' : 'var(--n-border)',
+                              background: selected ? 'var(--n-primary)' : 'transparent',
+                            }}
+                          >
+                            {selected && <span className="w-2 h-2 rounded-full bg-white block" />}
+                          </span>
+                          <span className="flex-1">
+                            <span className="font-semibold">Installment {idx + 1}</span>
+                            {overdue && (
+                              <span className="ml-2 text-xs font-bold" style={{ color: 'var(--n-danger)' }}>⚠ OVERDUE</span>
+                            )}
+                            <span className="block text-xs mt-0.5" style={{ color: 'var(--n-text-secondary)' }}>
+                              Due {p.due_date ?? '—'}
+                            </span>
+                          </span>
+                          <span className="font-bold" style={{ color: overdue ? 'var(--n-danger)' : 'var(--n-accent)' }}>
+                            ₱{p.amount.toFixed(2)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {/* Pay in full option */}
+                    <button
+                      type="button"
+                      onClick={() => handleTargetChange('full')}
+                      className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-left transition-all"
+                      style={{
+                        background: rpTarget === 'full' ? 'var(--n-primary-glow, rgba(27,58,92,0.15))' : 'var(--n-input-bg)',
+                        border: rpTarget === 'full' ? '2px solid var(--n-primary)' : '2px solid var(--n-border)',
+                      }}
+                    >
+                      <span
+                        className="w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center"
+                        style={{
+                          borderColor: rpTarget === 'full' ? 'var(--n-primary)' : 'var(--n-border)',
+                          background: rpTarget === 'full' ? 'var(--n-primary)' : 'transparent',
+                        }}
+                      >
+                        {rpTarget === 'full' && <span className="w-2 h-2 rounded-full bg-white block" />}
+                      </span>
+                      <span className="flex-1">
+                        <span className="font-semibold">Pay Full Balance</span>
+                        <span className="block text-xs mt-0.5" style={{ color: 'var(--n-text-secondary)' }}>
+                          Settles all remaining installments at once
+                        </span>
+                      </span>
+                      <span className="font-bold" style={{ color: 'var(--n-success)' }}>
+                        ₱{(recordingPaymentTx.balance_due ?? 0).toFixed(2)}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Single credit — show due date info only */
+                pendingCredits.length === 1 && (
+                  <div className="rounded-lg p-3 text-sm"
+                    style={{ background: 'var(--n-surface-raised, var(--n-surface))', border: '1px solid var(--n-accent)' }}>
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--n-text-secondary)' }}>Due Date</span>
+                      <span style={{
+                        fontWeight: 600,
+                        color: pendingCredits[0].due_date && pendingCredits[0].due_date < today
+                          ? 'var(--n-danger)' : 'var(--n-text)',
+                      }}>
+                        {pendingCredits[0].due_date ?? '—'}
+                        {pendingCredits[0].due_date && pendingCredits[0].due_date < today ? ' ⚠ OVERDUE' : ''}
+                      </span>
+                    </div>
+                  </div>
+                )
+              )}
+
+              {/* Payment method */}
+              <Select
+                label="Payment Method"
+                value={rpMethod}
+                onChange={(e) => setRpMethod(e.target.value)}
+                options={[
+                  { value: 'cash', label: 'Cash' },
+                  { value: 'card', label: 'Card' },
+                  { value: 'bank_transfer', label: 'Bank Transfer' },
+                  { value: 'check', label: 'Check' },
+                  { value: 'business_bank', label: 'Business Bank' },
+                ]}
               />
-            )}
 
-            {/* Actions */}
-            <div className="flex gap-3 justify-end pt-2">
-              <Button variant="secondary" onClick={() => setRecordingPaymentTx(null)}>Cancel</Button>
-              <Button
-                variant="primary"
-                onClick={handleRecordPayment}
-                loading={rpSaving}
-                disabled={!rpAmount || parseFloat(rpAmount) <= 0}
-              >
-                <HiCash className="w-4 h-4 mr-2" /> Record Payment
-              </Button>
+              {/* Amount — editable but pre-filled from selection */}
+              <Input
+                label="Amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                max={(recordingPaymentTx.balance_due ?? 0).toFixed(2)}
+                value={rpAmount}
+                onChange={(e) => setRpAmount(e.target.value)}
+                placeholder="0.00"
+              />
+
+              {/* Reference number */}
+              {(rpMethod === 'bank_transfer' || rpMethod === 'check' || rpMethod === 'business_bank') && (
+                <Input
+                  label="Reference Number"
+                  value={rpReference}
+                  onChange={(e) => setRpReference(e.target.value)}
+                  placeholder="e.g. BDO Transfer Ref# 12345"
+                />
+              )}
+
+              {/* Notes */}
+              <div>
+                <label className="neu-label">
+                  Notes <span style={{ color: 'var(--n-text-dim)', fontWeight: 400 }}>(optional)</span>
+                </label>
+                <textarea
+                  className="neu-inline-input w-full"
+                  style={{ minHeight: '2.5rem', resize: 'vertical', fontFamily: 'inherit' }}
+                  placeholder="e.g. Check no. 0012, partial payment per agreement"
+                  value={rpNotes}
+                  onChange={(e) => setRpNotes(e.target.value)}
+                  maxLength={500}
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 justify-end pt-2">
+                <Button variant="secondary" onClick={() => setRecordingPaymentTx(null)}>Cancel</Button>
+                <Button
+                  variant="primary"
+                  onClick={handleRecordPayment}
+                  loading={rpSaving}
+                  disabled={!rpAmount || parseFloat(rpAmount) <= 0}
+                >
+                  <HiCash className="w-4 h-4 mr-2" /> Record Payment
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
+      </Modal>
+
+      {/* Update Credit Due Date Modal */}
+      <Modal
+        isOpen={updateDueDateTx !== null}
+        onClose={() => !dueDateSaving && setUpdateDueDateTx(null)}
+        title="Update Payment Due Date"
+        width="sm"
+      >
+        {updateDueDateTx && (() => {
+          const creditPayments = (updateDueDateTx.payments ?? [])
+            .filter(p => p.payment_method === 'credit' && p.status === 'pending');
+          return (
+            <div className="space-y-4">
+              <div className="rounded-lg p-3 text-sm" style={{ background: 'var(--n-input-bg)' }}>
+                <div className="flex justify-between mb-1">
+                  <span style={{ color: 'var(--n-text-secondary)' }}>Transaction</span>
+                  <span className="font-mono font-semibold">{updateDueDateTx.transaction_number}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--n-text-secondary)' }}>Outstanding</span>
+                  <span style={{ color: 'var(--n-danger)', fontWeight: 700 }}>₱{(updateDueDateTx.balance_due ?? 0).toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {creditPayments.map((p, idx) => (
+                  <div key={p.id}>
+                    {creditPayments.length > 1 && (
+                      <p className="text-xs font-semibold uppercase mb-1" style={{ color: 'var(--n-text-secondary)' }}>
+                        Installment {idx + 1} — ₱{p.amount.toFixed(2)}
+                      </p>
+                    )}
+                    <DatePicker
+                      label={creditPayments.length === 1
+                        ? `New Due Date (current: ${p.due_date ?? 'not set'})`
+                        : `Due Date (current: ${p.due_date ?? 'not set'})`
+                      }
+                      value={updatedDueDates[p.id] ?? p.due_date ?? ''}
+                      onChange={(e) => setUpdatedDueDates(prev => ({ ...prev, [p.id]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-3 justify-end pt-2">
+                <Button variant="secondary" onClick={() => setUpdateDueDateTx(null)}>Cancel</Button>
+                <Button variant="amber" onClick={handleUpdateDueDates} loading={dueDateSaving}>
+                  <HiCalendar className="w-4 h-4 mr-2" /> Save Changes
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );
