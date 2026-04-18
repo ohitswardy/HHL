@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
             ChartOfAccountSeeder::class,
             DefaultDataSeeder::class,
             ProductCatalogSeeder::class,
+            ExpenseCategorySeeder::class,
         ]);
     }
 }
