@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { HiHome, HiCube, HiShoppingCart, HiDocumentReport, HiUserGroup, HiTruck, HiCollection, HiClipboardList, HiChartBar, HiCash, HiDocumentText, HiShieldCheck, HiTag, HiX, HiKey, HiClipboardCheck } from 'react-icons/hi';
+import { HiHome, HiCube, HiShoppingCart, HiDocumentReport, HiUserGroup, HiTruck, HiCollection, HiClipboardList, HiChartBar, HiCash, HiDocumentText, HiShieldCheck, HiTag, HiX, HiKey, HiClipboardCheck, HiDatabase } from 'react-icons/hi';
 import { useAuthStore } from '../../stores/authStore';
 
 interface NavItem {
@@ -117,7 +117,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             );
           })}
 
-          {(hasPermission('users.view') || hasPermission('audit-logs.view')) && (
+          {(hasPermission('users.view') || hasPermission('audit-logs.view') || hasRole('Super Admin')) && (
             <div>
               <p className="neu-sidebar-section">Admin</p>
               <div className="space-y-0.5">
@@ -137,6 +137,12 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                   <NavLink to="/admin/audit-trail" onClick={onClose} className={linkClass}>
                     <HiClipboardCheck className="w-5 h-5" />
                     Audit Trail
+                  </NavLink>
+                )}
+                {hasRole('Super Admin') && (
+                  <NavLink to="/admin/database-control" onClick={onClose} className={linkClass}>
+                    <HiDatabase className="w-5 h-5" />
+                    Database Control
                   </NavLink>
                 )}
               </div>

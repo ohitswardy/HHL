@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\ClientTierController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DataPurgeController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\PosController;
@@ -192,6 +193,14 @@ Route::prefix('v1')->group(function () {
         // Settings (all authenticated users can read; admins can update)
         Route::get('/settings', [SettingController::class, 'index']);
         Route::middleware('permission:accounting.view')->put('/settings/{key}', [SettingController::class, 'update']);
+
+        // Database Control (Super Admin only)
+        Route::prefix('database-control')->middleware('role:Super Admin')->group(function () {
+            Route::get('/eligible-months', [DataPurgeController::class, 'eligibleMonths']);
+            Route::post('/preview', [DataPurgeController::class, 'preview']);
+            Route::post('/execute', [DataPurgeController::class, 'execute']);
+            Route::get('/history', [DataPurgeController::class, 'history']);
+        });
 
         // Expenses
         Route::prefix('expenses')->middleware('permission:accounting.view')->group(function () {

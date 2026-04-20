@@ -51,6 +51,7 @@ class RoleAndPermissionSeeder extends Seeder
             'roles.view', 'roles.manage',
             'audit-logs.view',
             'settings.manage',
+            'database-control.access',
         ];
 
         $allPermissions = array_merge(

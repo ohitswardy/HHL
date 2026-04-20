@@ -61,6 +61,7 @@ const PERMISSION_META: Record<string, { label: string; description: string }> = 
   'purchase-orders.create': { label: 'Create POs',           description: 'Create new purchase orders' },
   'purchase-orders.edit':   { label: 'Edit POs',             description: 'Modify existing purchase orders' },
   'purchase-orders.receive':{ label: 'Receive Stock',        description: 'Mark purchase order items as received' },
+  'purchase-orders.cancel': { label: 'Cancel POs',           description: 'Cancel existing purchase orders' },
   // Suppliers
   'suppliers.view':         { label: 'View Suppliers',       description: 'Browse supplier records' },
   'suppliers.create':       { label: 'Add Suppliers',        description: 'Register new suppliers' },
@@ -85,6 +86,7 @@ const PERMISSION_META: Record<string, { label: string; description: string }> = 
   'roles.manage':  { label: 'Manage Roles',     description: 'Create, edit, clone, and delete roles' },
   'audit-logs.view':  { label: 'Audit Logs',      description: 'View system activity and the full audit trail' },
   'settings.manage':  { label: 'System Settings', description: 'Configure application-wide settings' },
+  'database-control.access': { label: 'Database Control', description: 'Access database management and purge tools' },
 };
 
 // ─── Permission dependencies ──────────────────────────────────────────────────
@@ -111,6 +113,7 @@ const PERMISSION_DEPS: Record<string, string[]> = {
   'purchase-orders.create':   ['purchase-orders.view'],
   'purchase-orders.edit':     ['purchase-orders.view'],
   'purchase-orders.receive':  ['purchase-orders.view'],
+  'purchase-orders.cancel':   ['purchase-orders.view'],
   'suppliers.create':         ['suppliers.view'],
   'suppliers.edit':           ['suppliers.view'],
   'suppliers.delete':         ['suppliers.view'],
@@ -154,7 +157,7 @@ const MODULE_MAP: { group: string; label: string; permissions: string[] }[] = [
   { group: 'Inventory', label: 'Stock & Movements',
     permissions: ['inventory.view', 'inventory.adjust'] },
   { group: 'Inventory', label: 'Purchase Orders',
-    permissions: ['purchase-orders.view', 'purchase-orders.create', 'purchase-orders.edit', 'purchase-orders.receive'] },
+    permissions: ['purchase-orders.view', 'purchase-orders.create', 'purchase-orders.edit', 'purchase-orders.receive', 'purchase-orders.cancel'] },
   { group: 'Inventory', label: 'Suppliers',
     permissions: ['suppliers.view', 'suppliers.create', 'suppliers.edit', 'suppliers.delete'] },
   { group: 'Accounting', label: 'Accounting & Ledger',
@@ -168,7 +171,7 @@ const MODULE_MAP: { group: string; label: string; permissions: string[] }[] = [
   { group: 'Admin', label: 'Role Management',
     permissions: ['roles.view', 'roles.manage'] },
   { group: 'Admin', label: 'System',
-    permissions: ['audit-logs.view', 'settings.manage'] },
+    permissions: ['audit-logs.view', 'settings.manage', 'database-control.access'] },
 ];
 
 const ALL_PERMISSIONS = MODULE_MAP.flatMap((m) => m.permissions);

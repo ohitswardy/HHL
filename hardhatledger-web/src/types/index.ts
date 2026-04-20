@@ -273,3 +273,44 @@ export interface BankTransactionSummary {
   net_balance: number;
   count: number;
 }
+
+export interface EligibleMonth {
+  year: number;
+  month: number;
+  label: string;
+  already_purged: boolean;
+}
+
+export interface PurgePreview {
+  year: number;
+  month: number;
+  month_label: string;
+  sales_transactions: number;
+  sale_items: number;
+  payments: number;
+  purchase_orders: number;
+  po_items: number;
+  journal_entries: number;
+  journal_lines: number;
+  expenses: number;
+  total_records: number;
+}
+
+export interface DataPurgeLog {
+  id: number;
+  user_id: number;
+  user?: { id: number; name: string };
+  purge_year: number;
+  purge_month: number;
+  sales_purged: number;
+  sale_items_purged: number;
+  payments_purged: number;
+  purchase_orders_purged: number;
+  po_items_purged: number;
+  journal_entries_purged: number;
+  journal_lines_purged: number;
+  expenses_purged: number;
+  status: 'completed' | 'failed';
+  notes: string | null;
+  created_at: string;
+}

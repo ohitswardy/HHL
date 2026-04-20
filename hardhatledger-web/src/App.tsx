@@ -27,6 +27,7 @@ import { TaxSettingsPage } from './modules/accounting/pages/TaxSettingsPage';
 import { UsersPage } from './modules/users/pages/UsersPage';
 import { RoleManagementPage } from './modules/roles/pages/RoleManagementPage';
 import { AuditTrailPage } from './modules/audit/pages/AuditTrailPage';
+import { DatabaseControlPage } from './modules/admin/pages/DatabaseControlPage';
 import { useEffect } from 'react';
 
 function App() {
@@ -64,6 +65,7 @@ function App() {
           <Route path="/users" element={<ProtectedRoute permission="users.view"><UsersPage /></ProtectedRoute>} />
           <Route path="/roles" element={<ProtectedRoute permission="roles.view"><RoleManagementPage /></ProtectedRoute>} />
           <Route path="/admin/audit-trail" element={<ProtectedRoute permission="audit-logs.view"><AuditTrailPage /></ProtectedRoute>} />
+          <Route path="/admin/database-control" element={<ProtectedRoute roles={['Super Admin']}><DatabaseControlPage /></ProtectedRoute>} />
 
           {/* Accounting */}
           <Route path="/accounting" element={<ProtectedRoute permission="accounting.view"><AccountingDashboard /></ProtectedRoute>} />
