@@ -175,6 +175,7 @@ class ExpenseController extends Controller
             'expenses'    => $expenses,
             'totals'      => $totals,
             'generatedAt' => now(),
+            'columns'     => $request->has('columns') ? (array) $request->input('columns') : null,
             'filters'     => [
                 'from'     => $request->get('from'),
                 'to'       => $request->get('to'),
@@ -201,53 +202,40 @@ class ExpenseController extends Controller
             ->get();
 
         $filename = 'expenses-' . now()->format('Y-m-d') . '.csv';
+        $selectedCols = $request->has('columns') ? (array) $request->input('columns') : null;
 
-        return response()->streamDownload(function () use ($expenses) {
+        $allCols = [
+            'expense_number'    => ['header' => 'Expense #',         'value' => fn($e) => $e->expense_number],
+            'date'              => ['header' => 'Date',               'value' => fn($e) => $e->date?->toDateString()],
+            'payee'             => ['header' => 'Payee',              'value' => fn($e) => $e->payee],
+            'supplier'          => ['header' => 'Supplier',           'value' => fn($e) => $e->supplier?->name ?? ''],
+            'category'          => ['header' => 'Category',           'value' => fn($e) => $e->category?->name ?? ''],
+            'account_code'      => ['header' => 'Account Code',       'value' => fn($e) => $e->category?->account_code ?? ''],
+            'reference_number'  => ['header' => 'Reference No.',      'value' => fn($e) => $e->reference_number ?? ''],
+            'source'            => ['header' => 'Source',             'value' => fn($e) => $e->source],
+            'po_number'         => ['header' => 'Linked PO Number',   'value' => fn($e) => $e->purchaseOrder?->po_number ?? ''],
+            'subtotal'          => ['header' => 'Subtotal',           'value' => fn($e) => number_format((float) $e->subtotal, 2, '.', '')],
+            'tax_amount'        => ['header' => 'VAT / Tax',          'value' => fn($e) => number_format((float) $e->tax_amount, 2, '.', '')],
+            'total_amount'      => ['header' => 'Total Amount',       'value' => fn($e) => number_format((float) $e->total_amount, 2, '.', '')],
+            'notes'             => ['header' => 'Notes',              'value' => fn($e) => $e->notes ?? ''],
+            'status'            => ['header' => 'Status',             'value' => fn($e) => $e->status],
+            'recorded_by'       => ['header' => 'Recorded By',        'value' => fn($e) => $e->user?->name ?? ''],
+            'created_at'        => ['header' => 'Created At',         'value' => fn($e) => $e->created_at?->toDateTimeString()],
+        ];
+        $orderedKeys = ['expense_number','date','payee','supplier','category','account_code','reference_number','source','po_number','subtotal','tax_amount','total_amount','notes','status','recorded_by','created_at'];
+        $activeCols = array_filter(
+            array_intersect_key($allCols, array_flip($orderedKeys)),
+            fn($key) => $selectedCols === null || in_array($key, $selectedCols),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        return response()->streamDownload(function () use ($expenses, $activeCols) {
             $handle = fopen('php://output', 'w');
-
-            // UTF-8 BOM for Excel compatibility
             fwrite($handle, "\xEF\xBB\xBF");
-
-            fputcsv($handle, [
-                'Expense #',
-                'Date',
-                'Payee',
-                'Supplier',
-                'Category',
-                'Account Code',
-                'Reference No.',
-                'Source',
-                'Linked PO Number',
-                'Subtotal',
-                'VAT / Tax',
-                'Total Amount',
-                'Notes',
-                'Status',
-                'Recorded By',
-                'Created At',
-            ]);
-
+            fputcsv($handle, array_column($activeCols, 'header'));
             foreach ($expenses as $expense) {
-                fputcsv($handle, [
-                    $expense->expense_number,
-                    $expense->date?->toDateString(),
-                    $expense->payee,
-                    $expense->supplier?->name ?? '',
-                    $expense->category?->name ?? '',
-                    $expense->category?->account_code ?? '',
-                    $expense->reference_number ?? '',
-                    $expense->source,
-                    $expense->purchaseOrder?->po_number ?? '',
-                    number_format((float) $expense->subtotal, 2, '.', ''),
-                    number_format((float) $expense->tax_amount, 2, '.', ''),
-                    number_format((float) $expense->total_amount, 2, '.', ''),
-                    $expense->notes ?? '',
-                    $expense->status,
-                    $expense->user?->name ?? '',
-                    $expense->created_at?->toDateTimeString(),
-                ]);
+                fputcsv($handle, array_map(fn($col) => ($col['value'])($expense), $activeCols));
             }
-
             fclose($handle);
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',

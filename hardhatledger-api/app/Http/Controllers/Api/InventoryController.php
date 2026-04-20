@@ -31,15 +31,26 @@ class InventoryController extends Controller
             });
         }
 
+        if ($request->boolean('low_stock')) {
+            $query->whereHas('stock', fn ($q) =>
+                $q->whereRaw('quantity_on_hand <= (SELECT reorder_level FROM products WHERE products.id = inventory_stock.product_id)')
+            );
+        }
+
         $products = $query->orderBy('name')->paginate((int) $request->input('per_page', 20));
+
+        $lowStockCount = Product::whereHas('stock', fn ($q) =>
+            $q->whereRaw('quantity_on_hand <= (SELECT reorder_level FROM products WHERE products.id = inventory_stock.product_id)')
+        )->where('is_active', true)->count();
 
         return response()->json([
             'data' => ProductResource::collection($products),
             'meta' => [
-                'current_page' => $products->currentPage(),
-                'last_page'    => $products->lastPage(),
-                'per_page'     => $products->perPage(),
-                'total'        => $products->total(),
+                'current_page'    => $products->currentPage(),
+                'last_page'       => $products->lastPage(),
+                'per_page'        => $products->perPage(),
+                'total'           => $products->total(),
+                'low_stock_count' => $lowStockCount,
             ],
         ]);
     }
@@ -118,12 +129,15 @@ class InventoryController extends Controller
 
         $movements = $query->orderByDesc('created_at')->get();
 
+        $columns = $request->has('columns') ? (array) $request->input('columns') : null;
+
         $pdf = Pdf::loadView('reports.movements', [
             'movements' => $movements,
             'from'      => $from,
             'to'        => $to,
             'type'      => $type,
             'search'    => $search,
+            'columns'   => $columns,
         ]);
 
         $pdf->setPaper('A4', 'landscape');
@@ -158,24 +172,28 @@ class InventoryController extends Controller
 
         $movements = $query->orderByDesc('created_at')->get();
         $filename = 'inventory-movements-' . now()->format('Y-m-d') . '.csv';
+        $selectedCols = $request->has('columns') ? (array) $request->input('columns') : null;
 
-        return response()->streamDownload(function () use ($movements) {
+        $allCols = [
+            'date'           => ['header' => 'Date & Time',    'value' => fn ($m) => $m->created_at?->format('Y-m-d H:i:s')],
+            'product'        => ['header' => 'Product',        'value' => fn ($m) => $m->product?->name ?? ''],
+            'sku'            => ['header' => 'SKU',            'value' => fn ($m) => $m->product?->sku ?? ''],
+            'type'           => ['header' => 'Type',           'value' => fn ($m) => $m->type],
+            'quantity'       => ['header' => 'Quantity',       'value' => fn ($m) => $m->quantity],
+            'unit_cost'      => ['header' => 'Unit Cost',      'value' => fn ($m) => $m->unit_cost !== null ? number_format((float) $m->unit_cost, 2, '.', '') : ''],
+            'reference_type' => ['header' => 'Reference Type', 'value' => fn ($m) => $m->reference_type ?? ''],
+            'reference_id'   => ['header' => 'Reference ID',   'value' => fn ($m) => $m->reference_id ?? ''],
+            'notes'          => ['header' => 'Notes',          'value' => fn ($m) => $m->notes ?? ''],
+            'user'           => ['header' => 'User',           'value' => fn ($m) => $m->user?->name ?? ''],
+        ];
+        $activeCols = $selectedCols ? array_filter($allCols, fn ($k) => in_array($k, $selectedCols), ARRAY_FILTER_USE_KEY) : $allCols;
+
+        return response()->streamDownload(function () use ($movements, $activeCols) {
             $handle = fopen('php://output', 'w');
             fwrite($handle, "\xEF\xBB\xBF"); // UTF-8 BOM
-            fputcsv($handle, ['Date & Time', 'Product', 'SKU', 'Type', 'Quantity', 'Unit Cost', 'Reference Type', 'Reference ID', 'Notes', 'User']);
+            fputcsv($handle, array_column($activeCols, 'header'));
             foreach ($movements as $m) {
-                fputcsv($handle, [
-                    $m->created_at?->format('Y-m-d H:i:s'),
-                    $m->product?->name ?? '',
-                    $m->product?->sku ?? '',
-                    $m->type,
-                    $m->quantity,
-                    $m->unit_cost !== null ? number_format((float) $m->unit_cost, 2, '.', '') : '',
-                    $m->reference_type ?? '',
-                    $m->reference_id ?? '',
-                    $m->notes ?? '',
-                    $m->user?->name ?? '',
-                ]);
+                fputcsv($handle, array_values(array_map(fn ($def) => ($def['value'])($m), $activeCols)));
             }
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
@@ -202,10 +220,13 @@ class InventoryController extends Controller
 
         $products = $query->orderBy('name')->get();
 
+        $columns = $request->has('columns') ? (array) $request->input('columns') : null;
+
         $pdf = Pdf::loadView('reports.stock', [
             'products'  => $products,
             'search'    => $search,
             'low_stock' => $lowStock,
+            'columns'   => $columns,
         ])->setOptions([
             'enable_php'           => true,
             'isHtml5ParserEnabled' => true,
@@ -238,27 +259,27 @@ class InventoryController extends Controller
 
         $products = $query->orderBy('name')->get();
         $filename = 'stock-report-' . now()->format('Y-m-d') . '.csv';
+        $selectedCols = $request->has('columns') ? (array) $request->input('columns') : null;
 
-        return response()->streamDownload(function () use ($products) {
+        $allCols = [
+            'name'          => ['header' => 'Product Name', 'value' => fn ($p) => $p->name],
+            'sku'           => ['header' => 'SKU',          'value' => fn ($p) => $p->sku],
+            'category'      => ['header' => 'Category',     'value' => fn ($p) => $p->category?->name ?? ''],
+            'unit'          => ['header' => 'Unit',         'value' => fn ($p) => $p->unit],
+            'on_hand'       => ['header' => 'On Hand',      'value' => fn ($p) => (int) ($p->stock?->quantity_on_hand ?? 0)],
+            'reserved'      => ['header' => 'Reserved',     'value' => fn ($p) => (int) ($p->stock?->quantity_reserved ?? 0)],
+            'available'     => ['header' => 'Available',    'value' => fn ($p) => (int) ($p->stock?->quantity_on_hand ?? 0) - (int) ($p->stock?->quantity_reserved ?? 0)],
+            'reorder_level' => ['header' => 'Reorder Level','value' => fn ($p) => $p->reorder_level],
+            'status'        => ['header' => 'Status',       'value' => fn ($p) => ((int) ($p->stock?->quantity_on_hand ?? 0)) <= $p->reorder_level ? 'Low Stock' : 'OK'],
+        ];
+        $activeCols = $selectedCols ? array_filter($allCols, fn ($k) => in_array($k, $selectedCols), ARRAY_FILTER_USE_KEY) : $allCols;
+
+        return response()->streamDownload(function () use ($products, $activeCols) {
             $handle = fopen('php://output', 'w');
             fwrite($handle, "\xEF\xBB\xBF");
-            fputcsv($handle, ['Product Name', 'SKU', 'Category', 'Unit', 'On Hand', 'Reserved', 'Available', 'Reorder Level', 'Status']);
+            fputcsv($handle, array_column($activeCols, 'header'));
             foreach ($products as $p) {
-                $onHand    = (int) ($p->stock?->quantity_on_hand ?? 0);
-                $reserved  = (int) ($p->stock?->quantity_reserved ?? 0);
-                $available = $onHand - $reserved;
-                $status    = $onHand <= $p->reorder_level ? 'Low Stock' : 'OK';
-                fputcsv($handle, [
-                    $p->name,
-                    $p->sku,
-                    $p->category?->name ?? '',
-                    $p->unit,
-                    $onHand,
-                    $reserved,
-                    $available,
-                    $p->reorder_level,
-                    $status,
-                ]);
+                fputcsv($handle, array_values(array_map(fn ($def) => ($def['value'])($p), $activeCols)));
             }
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);

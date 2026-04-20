@@ -9,6 +9,11 @@
 @if($type) &middot; {{ strtoupper($type) }}@endif
 @endsection
 
+@php
+  $cols = $columns ?? ['date','product','sku','type','quantity','unit_cost','reference_type','notes','user'];
+  $has = fn(string $c) => in_array($c, $cols);
+@endphp
+
 @section('extra-styles')
 <style>
   body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9px; color: #1a1a1a; }
@@ -82,49 +87,55 @@
 <table>
   <thead>
     <tr>
-      <th>Date &amp; Time</th>
-      <th>Product</th>
-      <th>SKU</th>
-      <th class="center">Type</th>
-      <th class="center">Qty</th>
-      <th class="right">Unit Cost</th>
-      <th>Reference</th>
-      <th>Notes</th>
-      <th>User</th>
+      @if($has('date'))           <th>Date &amp; Time</th>@endif
+      @if($has('product'))        <th>Product</th>@endif
+      @if($has('sku'))            <th>SKU</th>@endif
+      @if($has('type'))           <th class="center">Type</th>@endif
+      @if($has('quantity'))       <th class="center">Qty</th>@endif
+      @if($has('unit_cost'))      <th class="right">Unit Cost</th>@endif
+      @if($has('reference_type')) <th>Reference</th>@endif
+      @if($has('reference_id'))   <th>Ref ID</th>@endif
+      @if($has('notes'))          <th>Notes</th>@endif
+      @if($has('user'))           <th>User</th>@endif
     </tr>
   </thead>
   <tbody>
     @forelse($movements as $m)
     <tr>
-      <td class="small">{{ $m->created_at->format('M d, Y g:i A') }}</td>
-      <td>{{ $m->product?->name ?? '—' }}</td>
-      <td class="mono">{{ $m->product?->sku ?? '—' }}</td>
-      <td class="center">
-        @if($m->type === 'in')
-          <span class="badge badge-in">IN</span>
-        @elseif($m->type === 'out')
-          <span class="badge badge-out">OUT</span>
-        @else
-          <span class="badge badge-adj">ADJ</span>
-        @endif
-      </td>
-      <td class="center {{ $m->type === 'in' ? 'qty-in' : ($m->type === 'out' ? 'qty-out' : 'qty-adj') }}">
-        {{ $m->type === 'in' ? '+' : ($m->type === 'out' ? '-' : '=') }}{{ $m->quantity }}
-      </td>
-      <td class="right">{{ $m->unit_cost ? number_format($m->unit_cost, 2) : '—' }}</td>
-      <td class="small">
+      @if($has('date'))    <td class="small">{{ $m->created_at->format('M d, Y g:i A') }}</td>@endif
+      @if($has('product')) <td>{{ $m->product?->name ?? '—' }}</td>@endif
+      @if($has('sku'))     <td class="mono">{{ $m->product?->sku ?? '—' }}</td>@endif
+      @if($has('type'))
+        <td class="center">
+          @if($m->type === 'in')
+            <span class="badge badge-in">IN</span>
+          @elseif($m->type === 'out')
+            <span class="badge badge-out">OUT</span>
+          @else
+            <span class="badge badge-adj">ADJ</span>
+          @endif
+        </td>
+      @endif
+      @if($has('quantity'))
+        <td class="center {{ $m->type === 'in' ? 'qty-in' : ($m->type === 'out' ? 'qty-out' : 'qty-adj') }}">
+          {{ $m->type === 'in' ? '+' : ($m->type === 'out' ? '-' : '=') }}{{ $m->quantity }}
+        </td>
+      @endif
+      @if($has('unit_cost'))      <td class="right">{{ $m->unit_cost ? number_format($m->unit_cost, 2) : '—' }}</td>@endif
+      @if($has('reference_type'))
         @php
           $refMap = ['sale' => 'Sale', 'sale_void' => 'Sale Void', 'purchase_receipt' => 'Purchase', 'manual_adjustment' => 'Manual'];
           $ref = $refMap[$m->reference_type ?? ''] ?? $m->reference_type ?? '—';
         @endphp
-        {{ $ref }}{{ $m->reference_id ? ' #'.$m->reference_id : '' }}
-      </td>
-      <td class="small">{{ $m->notes ?? '—' }}</td>
-      <td class="small">{{ $m->user?->name ?? '—' }}</td>
+        <td class="small">{{ $ref }}</td>
+      @endif
+      @if($has('reference_id'))   <td class="small mono">{{ $m->reference_id ?? '—' }}</td>@endif
+      @if($has('notes'))          <td class="small">{{ $m->notes ?? '—' }}</td>@endif
+      @if($has('user'))           <td class="small">{{ $m->user?->name ?? '—' }}</td>@endif
     </tr>
     @empty
     <tr>
-      <td colspan="9" style="text-align:center; padding:20px; color:#94a3b8;">No movements found for this period</td>
+      <td colspan="{{ count($cols) }}" style="text-align:center; padding:20px; color:#94a3b8;">No movements found for this period</td>
     </tr>
     @endforelse
   </tbody>

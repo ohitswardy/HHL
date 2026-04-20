@@ -8,6 +8,12 @@
 {{ $date }} &nbsp;&middot;&nbsp; {{ $products->count() }} product(s)
 @endsection
 
+@php
+  // If $columns is null, show all columns (default template)
+  $cols = $columns ?? ['sku','name','category','unit','cost_price','selling_price','stock','reorder_level','status'];
+  $has = fn(string $c) => in_array($c, $cols);
+@endphp
+
 @section('extra-styles')
 <style>
   body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9px; color: #1a1a1a; }
@@ -53,15 +59,15 @@
 <table>
   <thead>
     <tr>
-      <th style="width:8%">SKU</th>
-      <th style="width:26%">Product Name</th>
-      <th style="width:14%">Category</th>
-      <th style="width:5%" class="center">Unit</th>
-      <th style="width:10%" class="right">Cost (&#8369;)</th>
-      <th style="width:10%" class="right">Selling (&#8369;)</th>
-      <th style="width:8%" class="center">Stock</th>
-      <th style="width:6%" class="center">Reorder</th>
-      <th style="width:7%" class="center">Status</th>
+      @if($has('sku'))          <th style="width:8%">SKU</th>@endif
+      @if($has('name'))         <th style="width:26%">Product Name</th>@endif
+      @if($has('category'))     <th style="width:14%">Category</th>@endif
+      @if($has('unit'))         <th style="width:5%" class="center">Unit</th>@endif
+      @if($has('cost_price'))   <th style="width:10%" class="right">Cost (&#8369;)</th>@endif
+      @if($has('selling_price'))<th style="width:10%" class="right">Selling (&#8369;)</th>@endif
+      @if($has('stock'))        <th style="width:8%" class="center">Stock</th>@endif
+      @if($has('reorder_level'))<th style="width:6%" class="center">Reorder</th>@endif
+      @if($has('status'))       <th style="width:7%" class="center">Status</th>@endif
     </tr>
   </thead>
   <tbody>
@@ -71,21 +77,23 @@
       $low = $product->reorder_level > 0 && $qty <= $product->reorder_level;
     @endphp
     <tr>
-      <td class="mono">{{ $product->sku }}</td>
-      <td>{{ $product->name }}</td>
-      <td>{{ $product->category?->name ?? '—' }}</td>
-      <td class="center">{{ $product->unit }}</td>
-      <td class="right">{{ number_format($product->cost_price, 2) }}</td>
-      <td class="right" style="font-weight:bold">{{ number_format($product->base_selling_price, 2) }}</td>
-      <td class="center {{ $low ? 'stock-low' : 'stock-ok' }}">{{ $qty }}</td>
-      <td class="center" style="color:#64748b">{{ $product->reorder_level }}</td>
-      <td class="center">
-        @if($product->is_active)
-          <span class="badge-active">Active</span>
-        @else
-          <span class="badge-inactive">Inactive</span>
-        @endif
-      </td>
+      @if($has('sku'))          <td class="mono">{{ $product->sku }}</td>@endif
+      @if($has('name'))         <td>{{ $product->name }}</td>@endif
+      @if($has('category'))     <td>{{ $product->category?->name ?? '—' }}</td>@endif
+      @if($has('unit'))         <td class="center">{{ $product->unit }}</td>@endif
+      @if($has('cost_price'))   <td class="right">{{ number_format($product->cost_price, 2) }}</td>@endif
+      @if($has('selling_price'))<td class="right" style="font-weight:bold">{{ number_format($product->base_selling_price, 2) }}</td>@endif
+      @if($has('stock'))        <td class="center {{ $low ? 'stock-low' : 'stock-ok' }}">{{ $qty }}</td>@endif
+      @if($has('reorder_level'))<td class="center" style="color:#64748b">{{ $product->reorder_level }}</td>@endif
+      @if($has('status'))
+        <td class="center">
+          @if($product->is_active)
+            <span class="badge-active">Active</span>
+          @else
+            <span class="badge-inactive">Inactive</span>
+          @endif
+        </td>
+      @endif
     </tr>
     @endforeach
   </tbody>

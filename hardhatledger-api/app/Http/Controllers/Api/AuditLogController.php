@@ -91,6 +91,7 @@ class AuditLogController extends Controller
         $pdf = Pdf::loadView('reports.audit-trail', [
             'logs'        => $logs,
             'filters'     => $filters,
+            'columns'     => $request->has('columns') ? (array) $request->input('columns') : null,
             'generatedAt' => now()->format('F j, Y g:i A'),
         ])->setPaper('a4', 'landscape');
 

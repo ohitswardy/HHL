@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
@@ -11,8 +11,9 @@ import {
   HiPlus, HiEye, HiSearch, HiX, HiChevronLeft, HiChevronRight,
   HiCurrencyDollar, HiCheckCircle, HiBan, HiFilter, HiRefresh,
   HiExclamation, HiDocumentText, HiDownload, HiDocumentDownload,
-  HiChevronDown, HiTable,
 } from 'react-icons/hi';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Supplier } from '../../../types';
@@ -112,17 +113,7 @@ export function ExpensesPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'csv' | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
-
-  /* close dropdown on outside click */
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
 
   /* load master data once */
   useEffect(() => {
@@ -223,18 +214,18 @@ export function ExpensesPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleExport = async (type: 'pdf' | 'csv', filtered: boolean) => {
-    setExportOpen(false);
-    setExporting(type);
+  const handleExport = async (format: ExportFormat, columns: string[], filtered: boolean) => {
+    setExportPickerOpen(false);
+    setExporting(format as 'pdf' | 'csv');
     try {
-      const params = filtered ? buildExportParams() : {};
-      const r = await api.get(`/expenses/export/${type}`, { params, responseType: 'blob' });
-      const mimeType = type === 'pdf' ? 'application/pdf' : 'text/csv';
+      const params = filtered ? { ...buildExportParams(), columns } : { columns };
+      const r = await api.get(`/expenses/export/${format}`, { params, responseType: 'blob' });
+      const mimeType = format === 'pdf' ? 'application/pdf' : 'text/csv';
       const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
-      downloadBlob(new Blob([r.data], { type: mimeType }), `expenses${suffix}.${type}`);
-      toast.success(`${filtered ? 'Filtered' : 'All'} expenses exported as ${type.toUpperCase()}`);
+      downloadBlob(new Blob([r.data], { type: mimeType }), `expenses${suffix}.${format}`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} expenses exported as ${format.toUpperCase()}`);
     } catch {
-      toast.error(`Failed to export ${type.toUpperCase()}`);
+      toast.error(`Failed to export ${format.toUpperCase()}`);
     } finally {
       setExporting(null);
     }
@@ -280,37 +271,17 @@ export function ExpensesPage() {
             {syncing ? <Spinner size="sm" /> : <HiRefresh className="w-4 h-4 mr-2" />}
             Sync from POs
           </Button>
-          {/* ── Export dropdown ── */}
-          <div className="relative" ref={exportRef}>
+          {/* ── Export ── */}
+          <div className="shrink-0">
             <button
-              onClick={() => setExportOpen((v) => !v)}
+              onClick={() => setExportPickerOpen(true)}
               disabled={!!exporting}
               className="neu-btn neu-btn-secondary"
               style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}
             >
               {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
               Export
-              <HiChevronDown className="w-3 h-3" />
             </button>
-            {exportOpen && (
-              <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
-                <button onClick={() => handleExport('pdf', false)} disabled={!!exporting} className="neu-dropdown-item">
-                  <HiDocumentDownload className="w-4 h-4" /> All Expenses (PDF)
-                </button>
-                <button onClick={() => handleExport('pdf', true)} disabled={!!exporting} className="neu-dropdown-item">
-                  <HiDocumentDownload className="w-4 h-4" /> Filtered Expenses (PDF)
-                </button>
-                <div className="border-t border-(--n-border) my-1" />
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
-                <button onClick={() => handleExport('csv', false)} disabled={!!exporting} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4" /> All Expenses (CSV)
-                </button>
-                <button onClick={() => handleExport('csv', true)} disabled={!!exporting} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4" /> Filtered Expenses (CSV)
-                </button>
-              </div>
-            )}
           </div>
           <Button variant="amber" onClick={() => setCreateOpen(true)}>
             <HiPlus className="w-4 h-4 mr-2" /> Record Expense
@@ -607,6 +578,18 @@ export function ExpensesPage() {
           ) : null}
         </Modal>
       )}
+
+      {/* Export Column Picker */}
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="expenses"
+        formats={['pdf', 'csv']}
+        hasFilterOption
+        isFiltered={hasActiveFilters}
+        onExport={handleExport}
+        exporting={!!exporting}
+      />
     </div>
   );
 }

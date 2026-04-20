@@ -71,6 +71,11 @@
 @endsection
 
 @section('content')
+@php
+    $cols = $columns ?? ['date', 'transaction_number', 'total', 'paid'];
+    $has  = fn(string $c) => in_array($c, $cols);
+    $colCount = count($cols);
+@endphp
 <div class="page">
 
     {{-- ── Document identifier ── --}}
@@ -126,30 +131,52 @@
     <table class="tx-table">
         <thead>
             <tr>
-                <th style="width:14%">DATE</th>
-                <th style="width:48%">DESCRIPTION</th>
-                <th class="right" style="width:19%">AMOUNT</th>
-                <th class="right" style="width:19%">RECEIVED</th>
+                @if($has('date'))<th style="width:12%">DATE</th>@endif
+                @if($has('time'))<th style="width:9%">TIME</th>@endif
+                @if($has('transaction_number'))<th>TRANSACTION #</th>@endif
+                @if($has('fulfillment_type'))<th style="width:10%">TYPE</th>@endif
+                @if($has('status'))<th style="width:10%">STATUS</th>@endif
+                @if($has('payment_method'))<th style="width:13%">PAYMENT</th>@endif
+                @if($has('cashier'))<th style="width:11%">STAFF</th>@endif
+                @if($has('subtotal'))<th class="right" style="width:10%">SUBTOTAL</th>@endif
+                @if($has('discount'))<th class="right" style="width:9%">DISCOUNT</th>@endif
+                @if($has('tax'))<th class="right" style="width:8%">VAT</th>@endif
+                @if($has('total'))<th class="right" style="width:11%">AMOUNT</th>@endif
+                @if($has('paid'))<th class="right" style="width:11%">RECEIVED</th>@endif
+                @if($has('balance_due'))<th class="right" style="width:10%">BALANCE</th>@endif
             </tr>
         </thead>
         <tbody>
             @forelse($transactions as $tx)
             <tr class="{{ $tx->status === 'voided' ? 'voided' : '' }}">
-                <td>{{ $tx->created_at->format('m/d/Y') }}</td>
+                @if($has('date'))<td>{{ $tx->created_at->format('m/d/Y') }}</td>@endif
+                @if($has('time'))<td>{{ $tx->created_at->format('H:i:s') }}</td>@endif
+                @if($has('transaction_number'))
                 <td>
-                    <span class="inv">Invoice No.{{ $tx->transaction_number }}</span>
-                    @if($tx->tax_amount > 0)
-                        <span style="font-size:8.5px; color:#1a6b9e; margin-left:6px;">
+                    <span class="inv">{{ $tx->transaction_number }}</span>
+                    @if(!$has('tax') && $tx->tax_amount > 0)
+                        <span style="font-size:8.5px; color:#1a6b9e; margin-left:4px;">
                             incl. VAT ₱{{ number_format($tx->tax_amount, 2) }}
                         </span>
                     @endif
                 </td>
-                <td class="right">{{ number_format($tx->total_amount, 2) }}</td>
-                <td class="right">{{ number_format($tx->payments->where('status','confirmed')->sum('amount'), 2) }}</td>
+                @endif
+                @if($has('fulfillment_type'))<td>{{ ucfirst($tx->fulfillment_type) }}</td>@endif
+                @if($has('status'))<td>{{ ucfirst($tx->status) }}</td>@endif
+                @if($has('payment_method'))
+                <td>{{ $tx->payments->pluck('payment_method')->map(fn($m) => str_replace('_',' ',$m))->implode(', ') ?: '—' }}</td>
+                @endif
+                @if($has('cashier'))<td>{{ $tx->user?->name ?? '—' }}</td>@endif
+                @if($has('subtotal'))<td class="right">{{ number_format($tx->subtotal, 2) }}</td>@endif
+                @if($has('discount'))<td class="right">{{ number_format($tx->discount_amount, 2) }}</td>@endif
+                @if($has('tax'))<td class="right">{{ number_format($tx->tax_amount, 2) }}</td>@endif
+                @if($has('total'))<td class="right">{{ number_format($tx->total_amount, 2) }}</td>@endif
+                @if($has('paid'))<td class="right">{{ number_format($tx->payments->where('status','confirmed')->sum('amount'), 2) }}</td>@endif
+                @if($has('balance_due'))<td class="right">{{ number_format(max(0, $tx->total_amount - $tx->payments->where('status','confirmed')->sum('amount')), 2) }}</td>@endif
             </tr>
             @empty
             <tr>
-                <td colspan="4" style="text-align:center; padding:22px; color:#aaa; font-style:italic;">
+                <td colspan="{{ $colCount }}" style="text-align:center; padding:22px; color:#aaa; font-style:italic;">
                     No transactions found for this period.
                 </td>
             </tr>
@@ -159,21 +186,51 @@
 
     {{-- ── Totals ── --}}
     @if($transactions->count() > 0)
+    @php
+        // Count columns before the first monetary total column
+        $leftSpan = collect(['date','time','transaction_number','fulfillment_type','status','payment_method','cashier'])
+            ->filter(fn($k) => $has($k))->count();
+        $hasTotalCol   = $has('total');
+        $hasPaidCol    = $has('paid');
+        $hasBalanceCol = $has('balance_due');
+        $subtotalCount = $has('subtotal') ? 1 : 0;
+        $discountCount = $has('discount') ? 1 : 0;
+        $taxCount      = $has('tax')      ? 1 : 0;
+        $preMoneySpan  = $subtotalCount + $discountCount + $taxCount;
+    @endphp
     <div class="totals-sep"></div>
     <table style="width:100%; border-collapse:collapse; margin-top:5px;">
         <tr>
-            <td style="width:62%;"></td>
-            <td style="width:19%; text-align:right; padding:4px 12px 2px; font-size:9.5px; font-weight:700; color:#1B3A5C; text-transform:uppercase;">Total Amount</td>
-            <td style="width:19%; text-align:right; padding:4px 12px 2px; font-size:9.5px; font-weight:700; color:#1B3A5C; text-transform:uppercase;">Total Received</td>
+            @if($leftSpan > 0)<td colspan="{{ $leftSpan }}"></td>@endif
+            @if($preMoneySpan > 0)<td colspan="{{ $preMoneySpan }}"></td>@endif
+            @if($hasTotalCol)
+            <td style="text-align:right; padding:4px 12px 2px; font-size:9.5px; font-weight:700; color:#1B3A5C; text-transform:uppercase;">Total Amount</td>
+            @endif
+            @if($hasPaidCol)
+            <td style="text-align:right; padding:4px 12px 2px; font-size:9.5px; font-weight:700; color:#1B3A5C; text-transform:uppercase;">Total Received</td>
+            @endif
+            @if($hasBalanceCol)
+            <td style="text-align:right; padding:4px 12px 2px; font-size:9.5px; font-weight:700; color:#1B3A5C; text-transform:uppercase;">Balance</td>
+            @endif
         </tr>
         <tr>
-            <td></td>
+            @if($leftSpan > 0)<td colspan="{{ $leftSpan }}"></td>@endif
+            @if($preMoneySpan > 0)<td colspan="{{ $preMoneySpan }}"></td>@endif
+            @if($hasTotalCol)
             <td style="text-align:right; padding:3px 12px 6px; font-size:12px; font-weight:700; color:#1B3A5C;">
                 PHP{{ number_format($transactions->where('status','!=','voided')->sum('total_amount'), 2) }}
             </td>
+            @endif
+            @if($hasPaidCol)
             <td style="text-align:right; padding:3px 12px 6px; font-size:12px; font-weight:700; color:#1B3A5C;">
                 PHP{{ number_format($transactions->flatMap->payments->where('status','confirmed')->sum('amount'), 2) }}
             </td>
+            @endif
+            @if($hasBalanceCol)
+            <td style="text-align:right; padding:3px 12px 6px; font-size:12px; font-weight:700; color:#1B3A5C;">
+                PHP{{ number_format(max(0, $transactions->where('status','!=','voided')->sum('total_amount') - $transactions->flatMap->payments->where('status','confirmed')->sum('amount')), 2) }}
+            </td>
+            @endif
         </tr>
     </table>
     @endif

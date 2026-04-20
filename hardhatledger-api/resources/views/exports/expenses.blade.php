@@ -196,6 +196,10 @@
 </div>
 
 {{-- ── Data Table ── --}}
+@php
+    $cols = $columns ?? ['expense_number','date','payee','category','reference_number','source','subtotal','tax_amount','total_amount','status'];
+    $has = fn(string $c) => in_array($c, $cols);
+@endphp
 @if($expenses->isEmpty())
     <div class="empty-msg">No expenses match the selected filters.</div>
 @else
@@ -216,16 +220,20 @@
     <thead>
         <tr>
             <th>#</th>
-            <th>Expense No.</th>
-            <th>Date</th>
-            <th>Payee</th>
-            <th>Category</th>
-            <th>Reference</th>
-            <th class="c">Source</th>
-            <th class="r">Subtotal</th>
-            <th class="r">VAT</th>
-            <th class="r">Total</th>
-            <th class="c">Status</th>
+            @if($has('expense_number'))   <th>Expense No.</th>@endif
+            @if($has('date'))             <th>Date</th>@endif
+            @if($has('payee'))            <th>Payee</th>@endif
+            @if($has('category'))         <th>Category</th>@endif
+            @if($has('account_code'))     <th>Acct Code</th>@endif
+            @if($has('reference_number')) <th>Reference</th>@endif
+            @if($has('source'))           <th class="c">Source</th>@endif
+            @if($has('po_number'))        <th>PO #</th>@endif
+            @if($has('subtotal'))         <th class="r">Subtotal</th>@endif
+            @if($has('tax_amount'))       <th class="r">VAT</th>@endif
+            @if($has('total_amount'))     <th class="r">Total</th>@endif
+            @if($has('notes'))            <th>Notes</th>@endif
+            @if($has('status'))           <th class="c">Status</th>@endif
+            @if($has('recorded_by'))      <th>Recorded By</th>@endif
         </tr>
     </thead>
     <tbody>
@@ -239,47 +247,59 @@
         @endphp
         <tr class="{{ $rowClass }}">
             <td style="color:#a0aec0; font-size:7pt;">{{ $i + 1 }}</td>
-            <td class="mono">{{ $expense->expense_number }}</td>
-            <td>{{ \Carbon\Carbon::parse($expense->date)->format('M d, Y') }}</td>
-            <td>
-                {{ $expense->payee }}
-                @if($expense->supplier && $expense->supplier->name !== $expense->payee)
-                    <br><span style="font-size:6.5pt; color:#718096;">{{ $expense->supplier->name }}</span>
-                @endif
-            </td>
-            <td style="font-size:7.5pt;">{{ $expense->category?->name ?? '&mdash;' }}</td>
-            <td class="mono">{{ $expense->reference_number ?? '&mdash;' }}</td>
-            <td class="c">
-                @if($expense->source === 'purchase_order')
-                    <span class="src-po">PO</span>
-                @else
-                    <span class="src-manual">Manual</span>
-                @endif
-            </td>
-            <td class="r">&#8369;{{ number_format((float)$expense->subtotal, 2) }}</td>
-            <td class="r">
-                @if((float)$expense->tax_amount > 0)
-                    &#8369;{{ number_format((float)$expense->tax_amount, 2) }}
-                @else
-                    &mdash;
-                @endif
-            </td>
-            <td class="r" style="font-weight:bold;">&#8369;{{ number_format((float)$expense->total_amount, 2) }}</td>
-            <td class="c">
-                <span class="badge b-{{ $expense->status }}">{{ $expense->status }}</span>
-            </td>
+            @if($has('expense_number'))   <td class="mono">{{ $expense->expense_number }}</td>@endif
+            @if($has('date'))             <td>{{ \Carbon\Carbon::parse($expense->date)->format('M d, Y') }}</td>@endif
+            @if($has('payee'))
+                <td>
+                    {{ $expense->payee }}
+                    @if($expense->supplier && $expense->supplier->name !== $expense->payee)
+                        <br><span style="font-size:6.5pt; color:#718096;">{{ $expense->supplier->name }}</span>
+                    @endif
+                </td>
+            @endif
+            @if($has('category'))         <td style="font-size:7.5pt;">{{ $expense->category?->name ?? '&mdash;' }}</td>@endif
+            @if($has('account_code'))     <td class="mono">{{ $expense->category?->account_code ?? '&mdash;' }}</td>@endif
+            @if($has('reference_number')) <td class="mono">{{ $expense->reference_number ?? '&mdash;' }}</td>@endif
+            @if($has('source'))
+                <td class="c">
+                    @if($expense->source === 'purchase_order')
+                        <span class="src-po">PO</span>
+                    @else
+                        <span class="src-manual">Manual</span>
+                    @endif
+                </td>
+            @endif
+            @if($has('po_number'))        <td class="mono">{{ $expense->purchaseOrder?->po_number ?? '&mdash;' }}</td>@endif
+            @if($has('subtotal'))         <td class="r">&#8369;{{ number_format((float)$expense->subtotal, 2) }}</td>@endif
+            @if($has('tax_amount'))
+                <td class="r">
+                    @if((float)$expense->tax_amount > 0)
+                        &#8369;{{ number_format((float)$expense->tax_amount, 2) }}
+                    @else
+                        &mdash;
+                    @endif
+                </td>
+            @endif
+            @if($has('total_amount'))     <td class="r" style="font-weight:bold;">&#8369;{{ number_format((float)$expense->total_amount, 2) }}</td>@endif
+            @if($has('notes'))            <td style="font-size:7pt;color:#4a5568;">{{ $expense->notes ?? '&mdash;' }}</td>@endif
+            @if($has('status'))           <td class="c"><span class="badge b-{{ $expense->status }}">{{ $expense->status }}</span></td>@endif
+            @if($has('recorded_by'))      <td style="font-size:7pt;">{{ $expense->user?->name ?? '&mdash;' }}</td>@endif
         </tr>
         @endforeach
     </tbody>
     <tfoot>
         <tr>
-            <td colspan="7" style="font-size:7.5pt; letter-spacing:0.5px; color:rgba(255,255,255,0.8);">
+            @php
+                $leadCols = count(array_filter(['expense_number','date','payee','category','account_code','reference_number','source','po_number'], fn($c) => $has($c))) + 1;
+            @endphp
+            <td colspan="{{ $leadCols }}" style="font-size:7.5pt; letter-spacing:0.5px; color:rgba(255,255,255,0.8);">
                 TOTALS &mdash; {{ $expenses->count() }} record{{ $expenses->count() !== 1 ? 's' : '' }}
             </td>
-            <td class="r">&#8369;{{ number_format($totals['subtotal'], 2) }}</td>
-            <td class="r">&#8369;{{ number_format($totals['tax_amount'], 2) }}</td>
-            <td class="r">&#8369;{{ number_format($totals['total_amount'], 2) }}</td>
-            <td></td>
+            @if($has('subtotal'))     <td class="r">&#8369;{{ number_format($totals['subtotal'], 2) }}</td>@endif
+            @if($has('tax_amount'))   <td class="r">&#8369;{{ number_format($totals['tax_amount'], 2) }}</td>@endif
+            @if($has('total_amount')) <td class="r">&#8369;{{ number_format($totals['total_amount'], 2) }}</td>@endif
+            @php $tailCols = count(array_filter(['notes','status','recorded_by'], fn($c) => $has($c))); @endphp
+            @if($tailCols > 0) <td colspan="{{ $tailCols }}"></td>@endif
         </tr>
     </tfoot>
 </table>

@@ -3,7 +3,9 @@ import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { DatePicker } from '../../../components/ui/DatePicker';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiSearch, HiChevronLeft, HiChevronRight, HiFilter, HiX, HiDocumentDownload, HiChevronDown, HiTable } from 'react-icons/hi';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
+import { HiSearch, HiChevronLeft, HiChevronRight, HiFilter, HiX, HiDocumentDownload } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -34,19 +36,8 @@ export function MovementsPage() {
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
   const [exporting, setExporting] = useState(false);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
   const exportRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const exportBtnRef = useRef<HTMLDivElement>(null);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /* close dropdown on outside click */
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportBtnRef.current && !exportBtnRef.current.contains(e.target as Node)) setExportOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -65,33 +56,24 @@ export function MovementsPage() {
     return params;
   };
 
-  const handleExportPdf = async (filtered: boolean) => {
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const params = buildExportParams(filtered);
-      const res = await api.get('/inventory/movements/print', { params, responseType: 'blob' });
-      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
-      downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `inventory-movements${suffix}.pdf`);
-      toast.success(`${filtered ? 'Filtered' : 'All'} movements exported as PDF`);
-    } catch {
-      toast.error('Failed to export PDF');
-    } finally {
-      setExporting(false);
-    }
-  };
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleExportCsv = async (filtered: boolean) => {
-    setExportOpen(false);
+  const handleExport = async (format: ExportFormat, columns: string[], filtered: boolean) => {
+    setExportPickerOpen(false);
     setExporting(true);
     try {
-      const params = buildExportParams(filtered);
-      const res = await api.get('/inventory/movements/export/csv', { params, responseType: 'blob' });
+      const params = { ...buildExportParams(filtered), columns };
       const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
-      downloadBlob(new Blob([res.data], { type: 'text/csv' }), `inventory-movements${suffix}.csv`);
-      toast.success(`${filtered ? 'Filtered' : 'All'} movements exported as CSV`);
+      if (format === 'pdf') {
+        const res = await api.get('/inventory/movements/print', { params, responseType: 'blob' });
+        downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `inventory-movements${suffix}.pdf`);
+      } else {
+        const res = await api.get('/inventory/movements/export/csv', { params, responseType: 'blob' });
+        downloadBlob(new Blob([res.data], { type: 'text/csv' }), `inventory-movements${suffix}.csv`);
+      }
+      toast.success(`${filtered ? 'Filtered' : 'All'} movements exported as ${format.toUpperCase()}`);
     } catch {
-      toast.error('Failed to export CSV');
+      toast.error('Failed to export');
     } finally {
       setExporting(false);
     }
@@ -165,36 +147,16 @@ export function MovementsPage() {
           <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">Full audit trail of all stock changes</p>
         </div>
 
-        <div className="relative shrink-0" ref={exportBtnRef}>
+        <div className="shrink-0">
           <button
-            onClick={() => setExportOpen((v) => !v)}
+            onClick={() => setExportPickerOpen(true)}
             disabled={exporting}
             className="neu-btn neu-btn-secondary"
             style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}
           >
             {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
             Export
-            <HiChevronDown className="w-3 h-3" />
           </button>
-          {exportOpen && (
-            <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
-              <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
-              <button onClick={() => handleExportPdf(false)} disabled={exporting} className="neu-dropdown-item">
-                <HiDocumentDownload className="w-4 h-4" /> All Movements (PDF)
-              </button>
-              <button onClick={() => handleExportPdf(true)} disabled={exporting} className="neu-dropdown-item">
-                <HiDocumentDownload className="w-4 h-4" /> Filtered Movements (PDF)
-              </button>
-              <div className="border-t border-(--n-border) my-1" />
-              <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
-              <button onClick={() => handleExportCsv(false)} disabled={exporting} className="neu-dropdown-item">
-                <HiTable className="w-4 h-4" /> All Movements (CSV)
-              </button>
-              <button onClick={() => handleExportCsv(true)} disabled={exporting} className="neu-dropdown-item">
-                <HiTable className="w-4 h-4" /> Filtered Movements (CSV)
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -385,6 +347,18 @@ export function MovementsPage() {
           </div>
         )}
       </Card>
+
+      {/* Export Column Picker */}
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="movements"
+        formats={['pdf', 'csv']}
+        hasFilterOption
+        isFiltered={!!(filterFrom || filterTo || filterType || search.trim())}
+        onExport={handleExport}
+        exporting={exporting}
+      />
     </div>
   );
 }

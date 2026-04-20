@@ -80,10 +80,22 @@
             color: #aaa;
             background-color: #fafafa;
         }
+        .tax-active {
+            color: #1a6b9e;
+            font-weight: bold;
+        }
+        .tax-zero {
+            color: #aaa;
+        }
 </style>
 @endsection
 
 @section('content')
+
+@php
+    $cols = $columns ?? ['transaction_number','date','client','fulfillment_type','status','subtotal','discount','tax','total','payment_method','cashier','notes'];
+    $has = fn(string $c) => in_array($c, $cols);
+@endphp
 
     <div class="period-info">
         <strong>Period:</strong> {{ $label }}
@@ -97,37 +109,43 @@
     <table>
         <thead>
             <tr>
-                <th style="width: 12%">Transaction #</th>
-                <th style="width: 13%">Date & Time</th>
-                <th style="width: 13%">Client</th>
-                <th style="width: 7%">Type</th>
-                <th style="width: 7%">Status</th>
-                <th style="width: 8%" class="text-right">Subtotal</th>
-                <th style="width: 6%" class="text-right">Discount</th>
-                <th style="width: 6%" class="text-right">VAT</th>
-                <th style="width: 8%" class="text-right">Total</th>
-                <th style="width: 20%">Notes</th>
+                @if($has('transaction_number')) <th style="width: 12%">Transaction #</th>@endif
+                @if($has('date'))               <th style="width: 13%">Date & Time</th>@endif
+                @if($has('client'))             <th style="width: 13%">Client</th>@endif
+                @if($has('fulfillment_type'))   <th style="width: 7%">Type</th>@endif
+                @if($has('status'))             <th style="width: 7%">Status</th>@endif
+                @if($has('subtotal'))           <th style="width: 8%" class="text-right">Subtotal</th>@endif
+                @if($has('discount'))           <th style="width: 6%" class="text-right">Discount</th>@endif
+                @if($has('tax'))                <th style="width: 6%" class="text-right">VAT</th>@endif
+                @if($has('total'))              <th style="width: 8%" class="text-right">Total</th>@endif
+                @if($has('payment_method'))     <th style="width: 10%">Payment</th>@endif
+                @if($has('cashier'))            <th style="width: 8%">Cashier</th>@endif
+                @if($has('notes'))              <th>Notes</th>@endif
             </tr>
         </thead>
         <tbody>
             @forelse($sales as $sale)
             <tr @if($sale->status === 'voided') class="voided-row" @endif>
-                <td>{{ $sale->transaction_number }}</td>
-                <td>{{ $sale->created_at->format('M d, Y h:i A') }}</td>
-                <td>{{ $sale->client?->business_name ?? 'Walk-in' }}</td>
-                <td class="text-center">{{ ucfirst($sale->fulfillment_type) }}</td>
-                <td class="text-center">{{ ucfirst($sale->status) }}</td>
-                <td class="text-right">{{ number_format($sale->subtotal, 2) }}</td>
-                <td class="text-right">{{ number_format($sale->discount_amount, 2) }}</td>
-                <td class="text-right" style="{{ $sale->tax_amount > 0 ? 'color:#1a6b9e;font-weight:bold;' : 'color:#aaa;' }}">
-                    {{ $sale->tax_amount > 0 ? number_format($sale->tax_amount, 2) : '—' }}
-                </td>
-                <td class="text-right amount">{{ number_format($sale->total_amount, 2) }}</td>
-                <td style="font-size:9px; color:#555;">{{ $sale->notes ?? '—' }}</td>
+                @if($has('transaction_number')) <td>{{ $sale->transaction_number }}</td>@endif
+                @if($has('date'))               <td>{{ $sale->created_at->format('M d, Y h:i A') }}</td>@endif
+                @if($has('client'))             <td>{{ $sale->client?->business_name ?? 'Walk-in' }}</td>@endif
+                @if($has('fulfillment_type'))   <td class="text-center">{{ ucfirst($sale->fulfillment_type) }}</td>@endif
+                @if($has('status'))             <td class="text-center">{{ ucfirst($sale->status) }}</td>@endif
+                @if($has('subtotal'))           <td class="text-right">{{ number_format($sale->subtotal, 2) }}</td>@endif
+                @if($has('discount'))           <td class="text-right">{{ number_format($sale->discount_amount, 2) }}</td>@endif
+                @if($has('tax'))
+                    <td class="text-right {{ $sale->tax_amount > 0 ? 'tax-active' : 'tax-zero' }}">
+                        {{ $sale->tax_amount > 0 ? number_format($sale->tax_amount, 2) : '—' }}
+                    </td>
+                @endif
+                @if($has('total'))              <td class="text-right amount">{{ number_format($sale->total_amount, 2) }}</td>@endif
+                @if($has('payment_method'))     <td>{{ $sale->payments->pluck('payment_method')->join(', ') }}</td>@endif
+                @if($has('cashier'))            <td style="font-size:9px;">{{ $sale->user?->name ?? '—' }}</td>@endif
+                @if($has('notes'))              <td style="font-size:9px; color:#555;">{{ $sale->notes ?? '—' }}</td>@endif
             </tr>
             @empty
             <tr>
-                <td colspan="9" class="text-center">No transactions found for this period</td>
+                <td colspan="{{ count($cols) }}" class="text-center">No transactions found for this period</td>
             </tr>
             @endforelse
         </tbody>

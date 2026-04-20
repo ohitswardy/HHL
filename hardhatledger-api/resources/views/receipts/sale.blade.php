@@ -96,16 +96,16 @@
             <td class="right">{{ number_format($sale->delivery_fee, 2) }}</td>
         </tr>
         @endif
-        @if($sale->tax_amount > 0)
-        <tr>
-            <td>VAT / Sales Tax</td>
-            <td class="right">+{{ number_format($sale->tax_amount, 2) }}</td>
-        </tr>
-        @endif
         <tr>
             <td class="bold" style="font-size:13px; padding-top:5px">TOTAL</td>
             <td class="right bold" style="font-size:13px; padding-top:5px">{{ number_format($sale->total_amount, 2) }}</td>
         </tr>
+        @if($sale->tax_amount > 0)
+        <tr>
+            <td style="font-size:9px; color:#666;">VAT incl. ({{ $taxRate }}%)</td>
+            <td class="right" style="font-size:9px; color:#666;">{{ number_format($sale->tax_amount, 2) }}</td>
+        </tr>
+        @endif
     </table>
 
     <div class="divider"></div>

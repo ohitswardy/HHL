@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card } from '../../../components/ui/Card';
 import { DatePicker } from '../../../components/ui/DatePicker';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiPrinter, HiChevronLeft, HiChevronRight, HiDocumentDownload, HiChevronDown, HiSearch, HiX, HiTable } from 'react-icons/hi';
+import { HiPrinter, HiChevronLeft, HiChevronRight, HiDocumentDownload, HiSearch, HiX } from 'react-icons/hi';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Client, SalesTransaction } from '../../../types';
@@ -42,18 +44,8 @@ export function ClientStatementsPage() {
   const [summary, setSummary] = useState<StatementSummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
 
-  const [exportOpen, setExportOpen] = useState(false);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
-
-  // Close export dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   // Load client list once
   useEffect(() => {
@@ -114,56 +106,51 @@ export function ClientStatementsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleExportAll = async () => {
+  const handleExport = async (format: ExportFormat, columns: string[], filtered: boolean) => {
+    setExportPickerOpen(false);
     if (!clientId) return;
-    setExportOpen(false);
     setExporting(true);
+    const slug = (selectedClient?.business_name ?? clientId).replace(/\s+/g, '-');
     try {
-      const res = await api.get('/accounting/reports/client-statement/pdf', {
-        params: { client_id: clientId, start_date: '2000-01-01', end_date: dayjs().format('YYYY-MM-DD') },
-        responseType: 'blob',
-      });
-      const slug = (selectedClient?.business_name ?? clientId).replace(/\s+/g, '-');
-      downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `${slug}-all-transactions.pdf`);
-      toast.success('All transactions exported as PDF');
+      if (format === 'pdf') {
+        const effectiveStart = filtered ? (startDate || '2000-01-01') : '2000-01-01';
+        const effectiveEnd = filtered ? (endDate || dayjs().format('YYYY-MM-DD')) : dayjs().format('YYYY-MM-DD');
+        const params: Record<string, unknown> = { client_id: clientId, start_date: effectiveStart, end_date: effectiveEnd, columns };
+        if (filtered && statusFilter) params.status = statusFilter;
+        const res = await api.get('/accounting/reports/client-statement/pdf', { params, responseType: 'blob' });
+        const suffix = filtered ? `${effectiveStart}-to-${effectiveEnd}` : 'all-transactions';
+        downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `${slug}-${suffix}.pdf`);
+        toast.success(`${filtered ? 'Filtered' : 'All'} transactions exported as PDF`);
+      } else {
+        const params: Record<string, unknown> = { client_id: clientId, per_page: 9999, page: 1 };
+        if (filtered) {
+          if (startDate) params.from = startDate;
+          if (endDate) params.to = endDate;
+          if (statusFilter) params.status = statusFilter;
+          if (paymentMethodFilter) params.payment_method = paymentMethodFilter;
+          if (searchTx.trim()) params.search = searchTx.trim();
+          if (minAmount !== '') params.min_amount = minAmount;
+          if (maxAmount !== '') params.max_amount = maxAmount;
+        }
+        const res = await api.get('/pos/sales', { params });
+        const allTx: SalesTransaction[] = res.data.data;
+        const effectiveStart = filtered ? (startDate || '2000-01-01') : '2000-01-01';
+        const effectiveEnd = filtered ? (endDate || dayjs().format('YYYY-MM-DD')) : dayjs().format('YYYY-MM-DD');
+        const periodLabel = filtered ? `${effectiveStart} to ${effectiveEnd}` : 'All Time';
+        const csv = buildCSV(allTx, periodLabel, columns);
+        const suffix = filtered ? `${effectiveStart}-to-${effectiveEnd}` : 'all-transactions';
+        downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `${slug}-${suffix}.csv`);
+        toast.success(`${filtered ? 'Filtered' : 'All'} transactions exported as CSV`);
+      }
     } catch {
-      toast.error('Failed to export PDF');
+      toast.error('Failed to export');
     } finally {
       setExporting(false);
     }
   };
 
-  const handleExportFiltered = async () => {
-    if (!clientId) return;
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const effectiveStart = startDate || '2000-01-01';
-      const effectiveEnd = endDate || dayjs().format('YYYY-MM-DD');
-      const params: Record<string, unknown> = {
-        client_id: clientId,
-        start_date: effectiveStart,
-        end_date: effectiveEnd,
-      };
-      if (statusFilter) params.status = statusFilter;
-      const res = await api.get('/accounting/reports/client-statement/pdf', {
-        params,
-        responseType: 'blob',
-      });
-      const slug = (selectedClient?.business_name ?? clientId).replace(/\s+/g, '-');
-      downloadBlob(
-        new Blob([res.data], { type: 'application/pdf' }),
-        `${slug}-${effectiveStart}-to-${effectiveEnd}.pdf`
-      );
-      toast.success('Filtered transactions exported as PDF');
-    } catch {
-      toast.error('Failed to export PDF');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const buildCSV = (txList: SalesTransaction[], periodLabel: string): string => {
+  const buildCSV = (txList: SalesTransaction[], periodLabel: string, columns: string[]): string => {
+    const has = (col: string) => columns.includes(col);
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
     const rows: string[] = [];
 
@@ -187,94 +174,46 @@ export function ClientStatementsPage() {
       rows.push('');
     }
 
-    // Column headers
-    rows.push(
-      ['Transaction #', 'Date', 'Time', 'Fulfillment Type', 'Status',
-        'Payment Method(s)', 'Cashier',
-        'Subtotal (₱)', 'Discount (₱)', 'VAT (₱)', 'Total (₱)', 'Paid (₱)', 'Balance Due (₱)']
-        .map(esc).join(',')
-    );
+    // Column headers (filtered by selection)
+    const colHeaders: string[] = [];
+    if (has('transaction_number')) colHeaders.push('Transaction #');
+    if (has('date')) colHeaders.push('Date');
+    if (has('time')) colHeaders.push('Time');
+    if (has('fulfillment_type')) colHeaders.push('Fulfillment Type');
+    if (has('status')) colHeaders.push('Status');
+    if (has('payment_method')) colHeaders.push('Payment Method(s)');
+    if (has('cashier')) colHeaders.push('Cashier');
+    if (has('subtotal')) colHeaders.push('Subtotal (₱)');
+    if (has('discount')) colHeaders.push('Discount (₱)');
+    if (has('tax')) colHeaders.push('VAT (₱)');
+    if (has('total')) colHeaders.push('Total (₱)');
+    if (has('paid')) colHeaders.push('Paid (₱)');
+    if (has('balance_due')) colHeaders.push('Balance Due (₱)');
+    rows.push(colHeaders.map(esc).join(','));
 
-    // Rows
+    // Data rows
     for (const tx of txList) {
       const dt = new Date(tx.created_at);
       const paymentMethods = tx.payments?.map((p) => p.payment_method.replace(/_/g, ' ')).join('; ') || '—';
-      rows.push([
-        tx.transaction_number,
-        dayjs(dt).format('YYYY-MM-DD'),
-        dayjs(dt).format('HH:mm:ss'),
-        tx.fulfillment_type,
-        tx.status,
-        paymentMethods,
-        tx.user?.name || 'Unknown',
-        tx.subtotal.toFixed(2),
-        tx.discount_amount.toFixed(2),
-        (tx.tax_amount ?? 0).toFixed(2),
-        tx.total_amount.toFixed(2),
-        tx.total_paid.toFixed(2),
-        tx.balance_due.toFixed(2),
-      ].map(esc).join(','));
+      const row: (string | number)[] = [];
+      if (has('transaction_number')) row.push(tx.transaction_number);
+      if (has('date')) row.push(dayjs(dt).format('YYYY-MM-DD'));
+      if (has('time')) row.push(dayjs(dt).format('HH:mm:ss'));
+      if (has('fulfillment_type')) row.push(tx.fulfillment_type);
+      if (has('status')) row.push(tx.status);
+      if (has('payment_method')) row.push(paymentMethods);
+      if (has('cashier')) row.push(tx.user?.name || 'Unknown');
+      if (has('subtotal')) row.push(tx.subtotal.toFixed(2));
+      if (has('discount')) row.push(tx.discount_amount.toFixed(2));
+      if (has('tax')) row.push((tx.tax_amount ?? 0).toFixed(2));
+      if (has('total')) row.push(tx.total_amount.toFixed(2));
+      if (has('paid')) row.push(tx.total_paid.toFixed(2));
+      if (has('balance_due')) row.push(tx.balance_due.toFixed(2));
+      rows.push(row.map(esc).join(','));
     }
 
     // BOM for Excel UTF-8 recognition
     return '\uFEFF' + rows.join('\r\n');
-  };
-
-  const handleExportAllCSV = async () => {
-    if (!clientId) return;
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const res = await api.get('/pos/sales', {
-        params: { client_id: clientId, per_page: 9999, page: 1 },
-      });
-      const allTx: SalesTransaction[] = res.data.data;
-      const csv = buildCSV(allTx, 'All Time');
-      const slug = (selectedClient?.business_name ?? clientId).replace(/\s+/g, '-');
-      downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `${slug}-all-transactions.csv`);
-      toast.success('All transactions exported as CSV');
-    } catch {
-      toast.error('Failed to export CSV');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleExportFilteredCSV = async () => {
-    if (!clientId) return;
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const effectiveStart = startDate || '2000-01-01';
-      const effectiveEnd = endDate || dayjs().format('YYYY-MM-DD');
-      const params: Record<string, unknown> = {
-        client_id: clientId,
-        per_page: 9999,
-        page: 1,
-      };
-      if (startDate) params.from = startDate;
-      if (endDate) params.to = endDate;
-      if (statusFilter) params.status = statusFilter;
-      if (paymentMethodFilter) params.payment_method = paymentMethodFilter;
-      if (searchTx.trim()) params.search = searchTx.trim();
-      if (minAmount !== '') params.min_amount = minAmount;
-      if (maxAmount !== '') params.max_amount = maxAmount;
-
-      const res = await api.get('/pos/sales', { params });
-      const allTx: SalesTransaction[] = res.data.data;
-      const periodLabel = `${effectiveStart} to ${effectiveEnd}`;
-      const csv = buildCSV(allTx, periodLabel);
-      const slug = (selectedClient?.business_name ?? clientId).replace(/\s+/g, '-');
-      downloadBlob(
-        new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
-        `${slug}-${effectiveStart}-to-${effectiveEnd}.csv`
-      );
-      toast.success('Filtered transactions exported as CSV');
-    } catch {
-      toast.error('Failed to export CSV');
-    } finally {
-      setExporting(false);
-    }
   };
 
   const handlePrintReceipt = async (transactionId: number) => {
@@ -307,42 +246,15 @@ export function ClientStatementsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="neu-page-title">Client Statements</h1>
-        <div className="relative" ref={exportRef}>
-          <button
-            onClick={() => setExportOpen(!exportOpen)}
-            disabled={!clientId || exporting}
-            className="neu-btn neu-btn-secondary"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}
-          >
-            {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
-            Export
-            <HiChevronDown className="w-3 h-3" />
-          </button>
-
-          {exportOpen && (
-            <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
-              <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
-              <button onClick={handleExportAll} disabled={exporting} className="neu-dropdown-item">
-                <HiDocumentDownload className="w-4 h-4" />
-                All Transactions (PDF)
-              </button>
-              <button onClick={handleExportFiltered} disabled={exporting} className="neu-dropdown-item">
-                <HiDocumentDownload className="w-4 h-4" />
-                Filtered Transactions (PDF)
-              </button>
-              <div className="border-t border-(--n-border) my-1" />
-              <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
-              <button onClick={handleExportAllCSV} disabled={exporting} className="neu-dropdown-item">
-                <HiTable className="w-4 h-4" />
-                All Transactions (CSV)
-              </button>
-              <button onClick={handleExportFilteredCSV} disabled={exporting} className="neu-dropdown-item">
-                <HiTable className="w-4 h-4" />
-                Filtered Transactions (CSV)
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          onClick={() => setExportPickerOpen(true)}
+          disabled={!clientId || exporting}
+          className="neu-btn neu-btn-secondary"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}
+        >
+          {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
+          Export
+        </button>
       </div>
 
       {/* Filters */}
@@ -649,6 +561,17 @@ export function ClientStatementsPage() {
           </Card>
         </>
       )}
+
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="client-statements"
+        formats={['pdf', 'csv']}
+        hasFilterOption
+        isFiltered={!!(startDate || endDate || statusFilter || paymentMethodFilter || searchTx || minAmount || maxAmount)}
+        onExport={handleExport}
+        exporting={exporting}
+      />
     </div>
   );
 }

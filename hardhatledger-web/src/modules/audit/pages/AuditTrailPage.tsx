@@ -5,10 +5,12 @@ import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Select } from '../../../components/ui/Select';
 import { DatePicker } from '../../../components/ui/DatePicker';
-import { HiClipboardList, HiSearch, HiChevronDown, HiChevronUp, HiRefresh, HiX, HiDownload, HiDocumentDownload, HiTable } from 'react-icons/hi';
+import { HiClipboardList, HiSearch, HiChevronDown, HiChevronUp, HiRefresh, HiX, HiDownload, HiDocumentDownload } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../../stores/authStore';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -270,17 +272,7 @@ export function AuditTrailPage() {
   const [actionOptions, setActionOptions] = useState<string[]>([]);
   const [tableOptions, setTableOptions] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
-
-  /* close export dropdown on outside click */
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
 
   // debounce search
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -376,45 +368,35 @@ export function AuditTrailPage() {
     a.click(); URL.revokeObjectURL(url);
   };
 
-  const handleExportPdf = async (filtered: boolean) => {
-    setExportOpen(false);
+  const handleExport = async (format: ExportFormat, columns: string[], filtered: boolean) => {
+    setExportPickerOpen(false);
     setExporting(true);
+    const suffix = filtered ? `-filtered-${new Date().toISOString().slice(0, 10)}` : `-all-${new Date().toISOString().slice(0, 10)}`;
     try {
       const params = buildExportParams(filtered);
-      const response = await api.get('/audit-logs/export/pdf', { params, responseType: 'blob' });
-      const suffix = filtered ? `-filtered-${new Date().toISOString().slice(0, 10)}` : `-all-${new Date().toISOString().slice(0, 10)}`;
-      downloadBlob(new Blob([response.data]), `audit-trail${suffix}.pdf`);
-      toast.success(`${filtered ? 'Filtered' : 'All'} audit trail exported as PDF`);
-    } catch {
-      toast.error('Export failed');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const exportCsv = async (filtered: boolean) => {
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const params = buildExportParams(filtered);
-      const res = await api.get('/audit-logs', { params });
-      const rows: AuditLog[] = res.data.data;
-
-      const header = ['ID', 'Timestamp', 'User', 'Action', 'Module', 'Record ID', 'IP Address'];
-      const lines = rows.map((r) => [
-        r.id,
-        formatTs(r.created_at),
-        r.user?.name ?? 'System',
-        r.action,
-        friendlyTable(r.table_name),
-        r.record_id ?? '',
-        r.ip_address ?? '',
-      ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
-
-      const csv = [header.join(','), ...lines].join('\n');
-      const suffix = filtered ? `-filtered-${new Date().toISOString().slice(0, 10)}` : `-all-${new Date().toISOString().slice(0, 10)}`;
-      downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `audit-trail${suffix}.csv`);
-      toast.success(`${filtered ? 'Filtered' : 'All'} audit trail exported as CSV`);
+      if (format === 'pdf') {
+        const response = await api.get('/audit-logs/export/pdf', { params: { ...params, columns }, responseType: 'blob' });
+        downloadBlob(new Blob([response.data]), `audit-trail${suffix}.pdf`);
+      } else {
+        // Client-side CSV
+        const res = await api.get('/audit-logs', { params });
+        const rows: AuditLog[] = res.data.data;
+        const allColDefs: Record<string, { header: string; value: (r: AuditLog) => string | number }> = {
+          created_at: { header: 'Timestamp', value: (r) => formatTs(r.created_at) },
+          user:       { header: 'User',      value: (r) => r.user?.name ?? 'System' },
+          action:     { header: 'Action',    value: (r) => r.action },
+          table_name: { header: 'Module',    value: (r) => friendlyTable(r.table_name) },
+          record_id:  { header: 'Record ID', value: (r) => r.record_id ?? '' },
+          ip_address: { header: 'IP Address',value: (r) => r.ip_address ?? '' },
+        };
+        const orderedKeys = ['created_at','user','action','table_name','record_id','ip_address'];
+        const activeCols = orderedKeys.filter((k) => columns.includes(k)).map((k) => ({ key: k, ...allColDefs[k] }));
+        const header = activeCols.map((c) => c.header);
+        const lines = rows.map((r) => activeCols.map((c) => `"${String(c.value(r)).replace(/"/g, '""')}"`).join(','));
+        const csv = [header.join(','), ...lines].join('\n');
+        downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `audit-trail${suffix}.csv`);
+      }
+      toast.success(`${filtered ? 'Filtered' : 'All'} audit trail exported as ${format.toUpperCase()}`);
     } catch {
       toast.error('Export failed');
     } finally {
@@ -435,32 +417,12 @@ export function AuditTrailPage() {
             <HiRefresh className={`w-4 h-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          {/* ── Export dropdown ── */}
-          <div className="relative" ref={exportRef}>
-            <Button variant="secondary" onClick={() => setExportOpen((v) => !v)} disabled={exporting || loading}>
+          {/* ── Export button ── */}
+          <div>
+            <Button variant="secondary" onClick={() => setExportPickerOpen(true)} disabled={exporting || loading}>
               <HiDocumentDownload className="w-4 h-4 mr-1.5" />
               {exporting ? 'Exporting...' : 'Export'}
-              <HiChevronDown className="w-3 h-3 ml-1" />
             </Button>
-            {exportOpen && (
-              <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '14rem' }}>
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
-                <button onClick={() => handleExportPdf(false)} disabled={exporting} className="neu-dropdown-item">
-                  <HiDocumentDownload className="w-4 h-4" /> All Events (PDF)
-                </button>
-                <button onClick={() => handleExportPdf(true)} disabled={exporting} className="neu-dropdown-item">
-                  <HiDocumentDownload className="w-4 h-4" /> Filtered Events (PDF)
-                </button>
-                <div className="border-t border-(--n-border) my-1" />
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
-                <button onClick={() => exportCsv(false)} disabled={exporting} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4" /> All Events (CSV)
-                </button>
-                <button onClick={() => exportCsv(true)} disabled={exporting} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4" /> Filtered Events (CSV)
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -645,6 +607,18 @@ export function AuditTrailPage() {
           </>
         )}
       </Card>
+
+      {/* Export Column Picker */}
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="audit-trail"
+        formats={['pdf', 'csv']}
+        hasFilterOption
+        isFiltered={isFiltered}
+        onExport={handleExport}
+        exporting={exporting}
+      />
     </div>
   );
 }

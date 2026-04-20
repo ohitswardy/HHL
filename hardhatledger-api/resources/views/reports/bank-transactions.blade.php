@@ -139,30 +139,30 @@
 <table class="dt">
     <colgroup>
         <col style="width:12px">   {{-- # --}}
-        <col style="width:60px">   {{-- Date --}}
-        <col style="width:82px">  {{-- Ref No --}}
-        <col style="width:56px">   {{-- Type --}}
-        <col style="width:72px">   {{-- Payee/Account --}}
-        <col>                      {{-- Bank/Check Details (flex) --}}
-        <col>                      {{-- Additional Notes (flex) --}}
-        <col style="width:70px">   {{-- Payment --}}
-        <col style="width:70px">   {{-- Deposit --}}
-        <col style="width:48px">   {{-- Tax --}}
-        <col style="width:80px">   {{-- Balance --}}
     </colgroup>
+    @php
+        $cols = $columns ?? ['date','ref_no','type','payee_account','memo','additional_notes','payment','deposit','tax','balance'];
+        $has = fn(string $c) => in_array($c, $cols);
+        // count non-fixed cols for tfoot colspan
+        $colCount = count($cols);
+        $fixedBeforePayment = 1; // # col
+        foreach (['date','ref_no','type','payee_account','memo','additional_notes'] as $c) {
+            if ($has($c)) $fixedBeforePayment++;
+        }
+    @endphp
     <thead>
         <tr>
             <th>#</th>
-            <th>Date</th>
-            <th>Ref No.</th>
-            <th class="c">Type</th>
-            <th>Payee / Account</th>
-            <th>Bank / Check Details</th>
-            <th>Additional Notes</th>
-            <th class="r">Payment</th>
-            <th class="r">Deposit</th>
-            <th class="r">Tax</th>
-            <th class="r">Balance</th>
+            @if($has('date'))<th>Date</th>@endif
+            @if($has('ref_no'))<th>Ref No.</th>@endif
+            @if($has('type'))<th class="c">Type</th>@endif
+            @if($has('payee_account'))<th>Payee / Account</th>@endif
+            @if($has('memo'))<th>Bank / Check Details</th>@endif
+            @if($has('additional_notes'))<th>Additional Notes</th>@endif
+            @if($has('payment'))<th class="r">Payment</th>@endif
+            @if($has('deposit'))<th class="r">Deposit</th>@endif
+            @if($has('tax'))<th class="r">Tax</th>@endif
+            @if($has('balance'))<th class="r">Balance</th>@endif
         </tr>
     </thead>
     <tbody>
@@ -181,26 +181,26 @@
         @endphp
         <tr class="{{ $rowClass }}">
             <td style="color:#a0aec0; font-size:7pt;">{{ $i + 1 }}</td>
-            <td>{{ \Carbon\Carbon::parse($txn['date'])->format('M d, Y') }}</td>
-            <td class="mono">{{ $txn['ref_no'] }}</td>
-            <td class="c"><span class="badge {{ $typeBadge }}">{{ $txn['type'] }}</span></td>
-            <td>{{ $txn['payee_account'] }}</td>
-            <td style="font-size:7pt;">{{ $txn['memo'] ?? '' }}</td>
-            <td style="font-size:7pt; color:#4a5568;">{{ $txn['additional_notes'] ?? '' }}</td>
-            <td class="r">{{ ($txn['payment_amount'] ?? 0) > 0 ? '₱' . number_format($txn['payment_amount'], 2) : '' }}</td>
-            <td class="r">{{ ($txn['deposit_amount'] ?? 0) > 0 ? '₱' . number_format($txn['deposit_amount'], 2) : '' }}</td>
-            <td class="r">{{ ($txn['tax'] ?? 0) > 0 ? '₱' . number_format($txn['tax'], 2) : '' }}</td>
-            <td class="r" style="font-weight:bold;">&#8369;{{ number_format($txn['balance'], 2) }}</td>
+            @if($has('date'))<td>{{ \Carbon\Carbon::parse($txn['date'])->format('M d, Y') }}</td>@endif
+            @if($has('ref_no'))<td class="mono">{{ $txn['ref_no'] }}</td>@endif
+            @if($has('type'))<td class="c"><span class="badge {{ $typeBadge }}">{{ $txn['type'] }}</span></td>@endif
+            @if($has('payee_account'))<td>{{ $txn['payee_account'] }}</td>@endif
+            @if($has('memo'))<td style="font-size:7pt;">{{ $txn['memo'] ?? '' }}</td>@endif
+            @if($has('additional_notes'))<td style="font-size:7pt; color:#4a5568;">{{ $txn['additional_notes'] ?? '' }}</td>@endif
+            @if($has('payment'))<td class="r">{{ ($txn['payment_amount'] ?? 0) > 0 ? '₱' . number_format($txn['payment_amount'], 2) : '' }}</td>@endif
+            @if($has('deposit'))<td class="r">{{ ($txn['deposit_amount'] ?? 0) > 0 ? '₱' . number_format($txn['deposit_amount'], 2) : '' }}</td>@endif
+            @if($has('tax'))<td class="r">{{ ($txn['tax'] ?? 0) > 0 ? '₱' . number_format($txn['tax'], 2) : '' }}</td>@endif
+            @if($has('balance'))<td class="r" style="font-weight:bold;">&#8369;{{ number_format($txn['balance'], 2) }}</td>@endif
         </tr>
         @endforeach
     </tbody>
     <tfoot>
         <tr>
-            <td colspan="7" style="text-align:right;">TOTALS</td>
-            <td class="r">&#8369;{{ number_format($totals['total_payments'], 2) }}</td>
-            <td class="r">&#8369;{{ number_format($totals['total_deposits'], 2) }}</td>
-            <td class="r">&#8369;{{ number_format($totals['total_tax'], 2) }}</td>
-            <td class="r">&#8369;{{ number_format($totals['net_balance'], 2) }}</td>
+            <td colspan="{{ $fixedBeforePayment }}" style="text-align:right;">TOTALS</td>
+            @if($has('payment'))<td class="r">&#8369;{{ number_format($totals['total_payments'], 2) }}</td>@endif
+            @if($has('deposit'))<td class="r">&#8369;{{ number_format($totals['total_deposits'], 2) }}</td>@endif
+            @if($has('tax'))<td class="r">&#8369;{{ number_format($totals['total_tax'], 2) }}</td>@endif
+            @if($has('balance'))<td class="r">&#8369;{{ number_format($totals['net_balance'], 2) }}</td>@endif
         </tr>
     </tfoot>
 </table>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
@@ -8,8 +8,10 @@ import { DatePicker } from '../../../components/ui/DatePicker';
 import {
   HiSearch, HiDownload, HiPencil, HiCheck, HiX,
   HiChevronLeft, HiChevronRight, HiCurrencyDollar,
-  HiArrowUp, HiArrowDown, HiDocumentDownload, HiChevronDown, HiTable,
+  HiArrowUp, HiArrowDown, HiDocumentDownload,
 } from 'react-icons/hi';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { BankTransaction, BankTransactionSummary } from '../../../types';
@@ -75,17 +77,48 @@ export function BankTransactionsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
 
   /* close export dropdown on outside click */
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    // noop - modal handles its own close
   }, []);
+
+  const handleExport = async (format: ExportFormat, columns: string[], filtered: boolean) => {
+    setExportPickerOpen(false);
+    setExporting(true);
+
+    let dataToExport = transactions;
+    if (editMode) {
+      dataToExport = editedTransactions;
+      saveNotes(editedTransactions);
+      setTransactions(editedTransactions);
+      setEditMode(false);
+    }
+
+    try {
+      const payload: Record<string, unknown> = { columns };
+      if (filtered) {
+        if (dateFrom) payload.from = dateFrom;
+        if (dateTo) payload.to = dateTo;
+        if (search.trim()) payload.search = search.trim();
+        payload.transactions = buildTransactionPayload(dataToExport);
+      } else {
+        const allRes = await api.get('/accounting/bank-transactions');
+        payload.transactions = buildTransactionPayload(mergeNotes(allRes.data.data));
+      }
+
+      const response = await api.post(`/accounting/bank-transactions/export/${format}`, payload, { responseType: 'blob' });
+      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
+      const mimeType = format === 'pdf' ? 'application/pdf' : 'text/csv';
+      downloadBlob(new Blob([response.data], { type: mimeType }), `bank-transactions${suffix}.${format}`);
+      toast.success(`${filtered ? 'Filtered' : 'All'} transactions exported as ${format.toUpperCase()}`);
+    } catch {
+      toast.error('Failed to export');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   /* ── edit mode ── */
   const [editMode, setEditMode] = useState(false);
@@ -345,32 +378,12 @@ export function BankTransactionsPage() {
                 </Button>
               </>
             )}
-            {/* ── Export dropdown ── */}
-            <div className="relative" ref={exportRef}>
-              <Button variant="amber" onClick={() => setExportOpen((v) => !v)} disabled={exporting || transactions.length === 0}>
+            {/* ── Export ── */}
+            <div className="shrink-0">
+              <Button variant="amber" onClick={() => setExportPickerOpen(true)} disabled={exporting || transactions.length === 0}>
                 {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4 mr-1" />}
                 Export
-                <HiChevronDown className="w-3 h-3 ml-1" />
               </Button>
-              {exportOpen && (
-                <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
-                  <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
-                  <button onClick={() => handleExportPdf(false)} disabled={exporting} className="neu-dropdown-item">
-                    <HiDocumentDownload className="w-4 h-4" /> All Transactions (PDF)
-                  </button>
-                  <button onClick={() => handleExportPdf(true)} disabled={exporting} className="neu-dropdown-item">
-                    <HiDocumentDownload className="w-4 h-4" /> Filtered Transactions (PDF)
-                  </button>
-                  <div className="border-t border-(--n-border) my-1" />
-                  <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
-                  <button onClick={() => handleExportCsv(false)} disabled={exporting} className="neu-dropdown-item">
-                    <HiTable className="w-4 h-4" /> All Transactions (CSV)
-                  </button>
-                  <button onClick={() => handleExportCsv(true)} disabled={exporting} className="neu-dropdown-item">
-                    <HiTable className="w-4 h-4" /> Filtered Transactions (CSV)
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -538,6 +551,18 @@ export function BankTransactionsPage() {
           </>
         )}
       </Card>
+
+      {/* Export Column Picker */}
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="bank-transactions"
+        formats={['pdf', 'csv']}
+        hasFilterOption
+        isFiltered={!!(dateFrom || dateTo || search.trim())}
+        onExport={handleExport}
+        exporting={exporting}
+      />
     </div>
   );
 }

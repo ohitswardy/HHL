@@ -6,7 +6,9 @@ import { Modal } from '../../../components/ui/Modal';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiSearch, HiDocumentDownload, HiChevronDown, HiPrinter, HiChevronLeft, HiChevronRight, HiCheck, HiBan, HiExclamation, HiPencilAlt, HiEye, HiCash, HiCalendar } from 'react-icons/hi';
+import { HiSearch, HiDocumentDownload, HiPrinter, HiChevronLeft, HiChevronRight, HiCheck, HiBan, HiExclamation, HiPencilAlt, HiEye, HiCash, HiCalendar } from 'react-icons/hi';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
 import dayjs from 'dayjs';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
@@ -33,9 +35,8 @@ export function TransactionsPage() {
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 20 });
 
   // Export dropdown
-  const [exportOpen, setExportOpen] = useState(false);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
 
   // Status update
   const [updatingId, setUpdatingId] = useState<number | null>(null);
@@ -77,12 +78,35 @@ export function TransactionsPage() {
 
   // Close export dropdown on outside click
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    // noop - modal handles its own close
   }, []);
+
+  const buildExportParams = () => ({
+    from: dateFrom, to: dateTo,
+    ...(search && { search }),
+    ...(statusFilter && { status: statusFilter }),
+    ...(fulfillmentFilter && { fulfillment_type: fulfillmentFilter }),
+    ...(paymentFilter && { payment_method: paymentFilter }),
+  });
+
+  const handleExport = async (format: ExportFormat, columns: string[]) => {
+    setExportPickerOpen(false);
+    setExporting(true);
+    try {
+      const params = { ...buildExportParams(), columns, format };
+      const res = await api.get('/pos/reports/export', { params, responseType: 'blob' });
+      let type = 'application/pdf';
+      let ext = 'pdf';
+      if (format === 'csv') { type = 'text/csv'; ext = 'csv'; }
+      if (format === 'xlsx') { type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; ext = 'xlsx'; }
+      downloadBlob(new Blob([res.data], { type }), `transactions-${dateFrom}-${dateTo}.${ext}`);
+      toast.success(`Report exported as ${format.toUpperCase()}`);
+    } catch {
+      toast.error('Failed to export');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Reset to page 1 when filters change
   useEffect(() => { setPage(1); }, [search, dateFrom, dateTo, statusFilter, fulfillmentFilter, paymentFilter]);
@@ -113,59 +137,9 @@ export function TransactionsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleExportPdf = async () => {
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const res = await api.get('/pos/reports/export', {
-        params: { from: dateFrom, to: dateTo, ...(search && { search }), ...(statusFilter && { status: statusFilter }), ...(fulfillmentFilter && { fulfillment_type: fulfillmentFilter }), ...(paymentFilter && { payment_method: paymentFilter }), format: 'pdf' },
-        responseType: 'blob',
-      });
-      downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `transactions-${dateFrom}-${dateTo}.pdf`);
-      toast.success('Report exported as PDF');
-    } catch {
-      toast.error('Failed to export PDF');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const res = await api.get('/pos/reports/export', {
-        params: { from: dateFrom, to: dateTo, ...(search && { search }), ...(statusFilter && { status: statusFilter }), ...(fulfillmentFilter && { fulfillment_type: fulfillmentFilter }), ...(paymentFilter && { payment_method: paymentFilter }), format: 'csv' },
-        responseType: 'blob',
-      });
-      downloadBlob(new Blob([res.data], { type: 'text/csv' }), `transactions-${dateFrom}-${dateTo}.csv`);
-      toast.success('Report exported as CSV');
-    } catch {
-      toast.error('Failed to export CSV');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleExportXlsx = async () => {
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const res = await api.get('/pos/reports/export', {
-        params: { from: dateFrom, to: dateTo, ...(search && { search }), ...(statusFilter && { status: statusFilter }), ...(fulfillmentFilter && { fulfillment_type: fulfillmentFilter }), ...(paymentFilter && { payment_method: paymentFilter }), format: 'xlsx' },
-        responseType: 'blob',
-      });
-      downloadBlob(
-        new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-        `transactions-${dateFrom}-${dateTo}.xlsx`
-      );
-      toast.success('Report exported as Excel');
-    } catch {
-      toast.error('Failed to export Excel');
-    } finally {
-      setExporting(false);
-    }
-  };
+  const handleExportPdf = async () => {};
+  const handleExportCsv = async () => {};
+  const handleExportXlsx = async () => {};
 
   const handleOpenView = async (tx: SalesTransaction) => {
     setLoadingView(true);
@@ -584,33 +558,16 @@ export function TransactionsPage() {
               />
             </div>
           </div>
-          <div className="relative pb-px" ref={exportRef}>
+          <div className="shrink-0">
             <button
-              onClick={() => setExportOpen(!exportOpen)}
+              onClick={() => setExportPickerOpen(true)}
               className="neu-btn neu-btn-secondary"
               disabled={exporting || transactions.length === 0}
-              style={{ padding: '0.625rem 1rem' }}
+              style={{ padding: '0.625rem 1rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}
             >
               <HiDocumentDownload className="w-4 h-4" />
               Export
-              <HiChevronDown className="w-3 h-3" />
             </button>
-            {exportOpen && (
-              <div className="neu-dropdown">
-                <button onClick={handleExportPdf} disabled={exporting} className="neu-dropdown-item">
-                  {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
-                  Export as PDF
-                </button>
-                <button onClick={handleExportCsv} disabled={exporting} className="neu-dropdown-item">
-                  {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
-                  Export as CSV
-                </button>
-                <button onClick={handleExportXlsx} disabled={exporting} className="neu-dropdown-item">
-                  {exporting ? <Spinner size="sm" /> : <HiDocumentDownload className="w-4 h-4" />}
-                  Export as Excel
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </Card>
@@ -1543,6 +1500,16 @@ export function TransactionsPage() {
           );
         })()}
       </Modal>
+
+      {/* Export Column Picker */}
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="transactions"
+        formats={['pdf', 'csv', 'xlsx']}
+        onExport={handleExport}
+        exporting={exporting}
+      />
     </div>
   );
 }

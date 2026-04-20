@@ -885,6 +885,8 @@ class AccountingController extends Controller
         $totalPayments = $transactions->flatMap->payments->where('status', 'confirmed')->where('payment_method', '!=', 'credit')->sum('amount');
         $periodBalance = $totalCharges - $totalPayments;
 
+        $columns = $request->has('columns') ? (array) $request->input('columns') : null;
+
         $pdf = Pdf::loadView('reports.client-statement', [
             'client'        => $client,
             'startDate'     => $start,
@@ -894,6 +896,7 @@ class AccountingController extends Controller
             'totalCharges'  => (float) $totalCharges,
             'totalPayments' => (float) $totalPayments,
             'periodBalance' => (float) $periodBalance,
+            'columns'       => $columns,
         ]);
 
         $pdf->setPaper('A4', 'portrait');

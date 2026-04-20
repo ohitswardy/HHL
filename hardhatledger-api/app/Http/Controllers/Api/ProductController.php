@@ -182,10 +182,12 @@ class ProductController extends Controller
     public function exportPdf(Request $request): \Illuminate\Http\Response
     {
         $products = $this->buildExportQuery($request)->get();
+        $columns  = $request->has('columns') ? (array) $request->input('columns') : null;
 
         $pdf = Pdf::loadView('products.export', [
             'products' => $products,
             'date'     => now()->format('F d, Y'),
+            'columns'  => $columns,
         ]);
         $pdf->setPaper('a4', 'landscape');
         $pdf->setOptions(['enable_php' => true]);
@@ -196,26 +198,36 @@ class ProductController extends Controller
     public function exportCsv(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $products = $this->buildExportQuery($request)->get();
+        $selectedCols = $request->has('columns') ? (array) $request->input('columns') : null;
 
         $filename = 'products-' . now()->format('Y-m-d') . '.csv';
 
-        return response()->streamDownload(function () use ($products) {
+        // All possible columns in order
+        $allCols = [
+            'sku'           => fn ($p) => $p->sku,
+            'name'          => fn ($p) => $p->name,
+            'category'      => fn ($p) => $p->category?->name ?? '',
+            'unit'          => fn ($p) => $p->unit,
+            'cost_price'    => fn ($p) => $p->cost_price,
+            'selling_price' => fn ($p) => $p->base_selling_price,
+            'stock'         => fn ($p) => $p->stock?->quantity_on_hand ?? 0,
+            'reorder_level' => fn ($p) => $p->reorder_level,
+            'status'        => fn ($p) => $p->is_active ? 'Active' : 'Inactive',
+        ];
+        $headerMap = [
+            'sku' => 'SKU', 'name' => 'Name', 'category' => 'Category', 'unit' => 'Unit',
+            'cost_price' => 'Cost Price', 'selling_price' => 'Selling Price',
+            'stock' => 'Stock', 'reorder_level' => 'Reorder Level', 'status' => 'Status',
+        ];
+
+        $activeCols = $selectedCols ? array_filter($allCols, fn ($k) => in_array($k, $selectedCols), ARRAY_FILTER_USE_KEY) : $allCols;
+
+        return response()->streamDownload(function () use ($products, $activeCols, $headerMap) {
             $handle = fopen('php://output', 'w');
-            // UTF-8 BOM so Excel opens it correctly
             fwrite($handle, "\xEF\xBB\xBF");
-            fputcsv($handle, ['SKU', 'Name', 'Category', 'Unit', 'Cost Price', 'Selling Price', 'Stock', 'Reorder Level', 'Status']);
+            fputcsv($handle, array_values(array_intersect_key($headerMap, $activeCols)));
             foreach ($products as $p) {
-                fputcsv($handle, [
-                    $p->sku,
-                    $p->name,
-                    $p->category?->name ?? '',
-                    $p->unit,
-                    $p->cost_price,
-                    $p->base_selling_price,
-                    $p->stock?->quantity_on_hand ?? 0,
-                    $p->reorder_level,
-                    $p->is_active ? 'Active' : 'Inactive',
-                ]);
+                fputcsv($handle, array_values(array_map(fn ($fn) => $fn($p), $activeCols)));
             }
             fclose($handle);
         }, $filename, [
@@ -228,7 +240,29 @@ class ProductController extends Controller
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $spreadsheet->removeSheetByIndex(0); // remove default blank sheet
 
-        $headers = ['SKU', 'Name', 'Unit', 'Cost Price', 'Selling Price', 'Stock', 'Reorder Level', 'Status'];
+        $selectedCols = $request->has('columns') ? (array) $request->input('columns') : null;
+
+        $allColDefs = [
+            'sku'           => ['header' => 'SKU',           'value' => fn ($p) => $p->sku,                              'money' => false],
+            'name'          => ['header' => 'Name',          'value' => fn ($p) => $p->name,                             'money' => false],
+            'unit'          => ['header' => 'Unit',          'value' => fn ($p) => $p->unit,                             'money' => false],
+            'cost_price'    => ['header' => 'Cost Price',    'value' => fn ($p) => (float) $p->cost_price,               'money' => true ],
+            'selling_price' => ['header' => 'Selling Price', 'value' => fn ($p) => (float) $p->base_selling_price,       'money' => true ],
+            'stock'         => ['header' => 'Stock',         'value' => fn ($p) => $p->stock?->quantity_on_hand ?? 0,    'money' => false],
+            'reorder_level' => ['header' => 'Reorder Level', 'value' => fn ($p) => $p->reorder_level,                   'money' => false],
+            'status'        => ['header' => 'Status',        'value' => fn ($p) => $p->is_active ? 'Active' : 'Inactive','money' => false],
+            'category'      => ['header' => 'Category',      'value' => fn ($p) => $p->category?->name ?? '',            'money' => false],
+        ];
+        // Keep original order, add category after name if selected
+        $orderedKeys = ['sku','name','category','unit','cost_price','selling_price','stock','reorder_level','status'];
+        if ($selectedCols) {
+            $orderedKeys = array_filter($orderedKeys, fn ($k) => in_array($k, $selectedCols));
+        }
+        $activeCols = array_intersect_key(array_merge(array_flip($orderedKeys), $allColDefs), array_flip($orderedKeys));
+        $activeCols = array_map(fn ($k) => $allColDefs[$k], $orderedKeys);
+
+        $headers = array_column($activeCols, 'header');
+        $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($headers));
 
         $products = $this->buildExportQuery($request)->get();
 
@@ -242,7 +276,7 @@ class ProductController extends Controller
             $spreadsheet->addSheet($sheet);
 
             $sheet->fromArray($headers, null, 'A1');
-            $sheet->getStyle('A1:H1')->applyFromArray([
+            $sheet->getStyle("A1:{$lastColLetter}1")->applyFromArray([
                 'font'    => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF']],
                 'fill'    => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF1B3A5C']],
                 'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['argb' => 'FFD1D5DB']]],
@@ -250,29 +284,29 @@ class ProductController extends Controller
 
             $row = 2;
             foreach ($items as $p) {
-                $sheet->fromArray([
-                    $p->sku,
-                    $p->name,
-                    $p->unit,
-                    (float) $p->cost_price,
-                    (float) $p->base_selling_price,
-                    $p->stock?->quantity_on_hand ?? 0,
-                    $p->reorder_level,
-                    $p->is_active ? 'Active' : 'Inactive',
-                ], null, "A{$row}");
+                $rowData = array_values(array_map(fn ($def) => ($def['value'])($p), $activeCols));
+                $sheet->fromArray($rowData, null, "A{$row}");
 
-                $sheet->getStyle("D{$row}:E{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+                // Apply money format to monetary columns
+                $colIdx = 1;
+                foreach ($activeCols as $def) {
+                    if ($def['money']) {
+                        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx);
+                        $sheet->getStyle("{$colLetter}{$row}")->getNumberFormat()->setFormatCode('#,##0.00');
+                    }
+                    $colIdx++;
+                }
 
                 if ($row % 2 === 0) {
-                    $sheet->getStyle("A{$row}:H{$row}")->getFill()
+                    $sheet->getStyle("A{$row}:{$lastColLetter}{$row}")->getFill()
                         ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
                         ->getStartColor()->setARGB('FFF9FAFB');
                 }
                 $row++;
             }
 
-            foreach (range('A', 'H') as $col) {
-                $sheet->getColumnDimension($col)->setAutoSize(true);
+            foreach (range(1, count($headers)) as $colIdx) {
+                $sheet->getColumnDimensionByColumn($colIdx)->setAutoSize(true);
             }
 
             $sheet->freezePane('A2');

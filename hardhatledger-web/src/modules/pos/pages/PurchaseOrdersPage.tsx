@@ -10,8 +10,10 @@ import { Spinner } from '../../../components/ui/Spinner';
 import {
   HiPlus, HiEye, HiTrash, HiSearch, HiX, HiChevronLeft, HiChevronRight,
   HiDocumentText, HiCheckCircle, HiExclamation, HiClipboardCheck, HiDownload,
-  HiBan, HiTable, HiDocumentDownload, HiChevronDown,
+  HiBan, HiDocumentDownload, HiTable,
 } from 'react-icons/hi';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { PurchaseOrder, PurchaseOrderItem, Supplier, Product } from '../../../types';
@@ -242,17 +244,7 @@ export function PurchaseOrdersPage() {
   const [cancelPO, setCancelPO] = useState<PurchaseOrder | null>(null);
   const [downloadingCsvId, setDownloadingCsvId] = useState<number | null>(null);
   const [exportingList, setExportingList] = useState(false);
-  const [exportListOpen, setExportListOpen] = useState(false);
-  const exportListRef = useRef<HTMLDivElement>(null);
-
-  /* close export dropdown on outside click */
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportListRef.current && !exportListRef.current.contains(e.target as Node)) setExportListOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
 
   /* load master data once */
   useEffect(() => {
@@ -331,33 +323,22 @@ export function PurchaseOrdersPage() {
     return params;
   };
 
-  const handleExportListPdf = async (filtered: boolean) => {
-    setExportListOpen(false);
+  const handleExportList = async (format: ExportFormat, columns: string[], filtered: boolean) => {
+    setExportPickerOpen(false);
     setExportingList(true);
     try {
-      const params = buildListParams(filtered);
-      const response = await api.get('/purchase-orders/export/pdf', { params, responseType: 'blob' });
+      const params = { ...buildListParams(filtered), columns };
       const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
-      downloadBlob(new Blob([response.data]), `purchase-orders${suffix}.pdf`);
-      toast.success(`${filtered ? 'Filtered' : 'All'} purchase orders exported as PDF`);
+      if (format === 'pdf') {
+        const response = await api.get('/purchase-orders/export/pdf', { params, responseType: 'blob' });
+        downloadBlob(new Blob([response.data]), `purchase-orders${suffix}.pdf`);
+      } else {
+        const response = await api.get('/purchase-orders/export/csv', { params, responseType: 'blob' });
+        downloadBlob(new Blob([response.data], { type: 'text/csv' }), `purchase-orders${suffix}.csv`);
+      }
+      toast.success(`${filtered ? 'Filtered' : 'All'} purchase orders exported as ${format.toUpperCase()}`);
     } catch {
-      toast.error('Failed to export PDF');
-    } finally {
-      setExportingList(false);
-    }
-  };
-
-  const handleExportListCsv = async (filtered: boolean) => {
-    setExportListOpen(false);
-    setExportingList(true);
-    try {
-      const params = buildListParams(filtered);
-      const response = await api.get('/purchase-orders/export/csv', { params, responseType: 'blob' });
-      const suffix = filtered ? `-filtered-${dayjs().format('YYYY-MM-DD')}` : `-all-${dayjs().format('YYYY-MM-DD')}`;
-      downloadBlob(new Blob([response.data], { type: 'text/csv' }), `purchase-orders${suffix}.csv`);
-      toast.success(`${filtered ? 'Filtered' : 'All'} purchase orders exported as CSV`);
-    } catch {
-      toast.error('Failed to export CSV');
+      toast.error('Failed to export');
     } finally {
       setExportingList(false);
     }
@@ -382,33 +363,11 @@ export function PurchaseOrdersPage() {
           <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">{meta.total} total orders</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* ── Export dropdown ── */}
-          <div className="relative" ref={exportListRef}>
-            <Button variant="secondary" onClick={() => setExportListOpen((v) => !v)} loading={exportingList}>
-              <HiDocumentDownload className="w-4 h-4 mr-1" />
-              Export
-              <HiChevronDown className="w-3 h-3 ml-1" />
-            </Button>
-            {exportListOpen && (
-              <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '15rem' }}>
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
-                <button onClick={() => handleExportListPdf(false)} disabled={exportingList} className="neu-dropdown-item">
-                  <HiDocumentDownload className="w-4 h-4" /> All Purchase Orders (PDF)
-                </button>
-                <button onClick={() => handleExportListPdf(true)} disabled={exportingList} className="neu-dropdown-item">
-                  <HiDocumentDownload className="w-4 h-4" /> Filtered Purchase Orders (PDF)
-                </button>
-                <div className="border-t border-(--n-border) my-1" />
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
-                <button onClick={() => handleExportListCsv(false)} disabled={exportingList} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4" /> All Purchase Orders (CSV)
-                </button>
-                <button onClick={() => handleExportListCsv(true)} disabled={exportingList} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4" /> Filtered Purchase Orders (CSV)
-                </button>
-              </div>
-            )}
-          </div>
+          {/* ── Export ── */}
+          <Button variant="secondary" onClick={() => setExportPickerOpen(true)} loading={exportingList}>
+            <HiDocumentDownload className="w-4 h-4 mr-1" />
+            Export
+          </Button>
           <Button variant="amber" onClick={() => setCreateOpen(true)}>
             <HiPlus className="w-4 h-4 mr-2" /> New Purchase Order
           </Button>
@@ -637,6 +596,18 @@ export function PurchaseOrdersPage() {
           onCancelled={(updated) => { setCancelPO(null); setDetailPO(updated); fetchPOs(); }}
         />
       )}
+
+      {/* Export Column Picker */}
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="purchase-orders"
+        formats={['pdf', 'csv']}
+        hasFilterOption
+        isFiltered={hasActiveFilters}
+        onExport={handleExportList}
+        exporting={exportingList}
+      />
     </div>
   );
 }

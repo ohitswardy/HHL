@@ -58,8 +58,9 @@ class PosController extends Controller
             $deliveryFee = $request->fulfillment_type === 'delivery'
                 ? (float) ($request->delivery_fee ?? 0)
                 : 0;
+            // tax_amount is VAT-inclusive (already inside the price), not additive
             $taxAmount   = (float) ($request->tax_amount ?? 0);
-            $totalAmount = $subtotal - $discountAmount + $deliveryFee + $taxAmount;
+            $totalAmount = $subtotal - $discountAmount + $deliveryFee;
 
             // Determine sale status: pending if any payments are deferred
             // business_bank is deferred — it requires confirmation that the cheque/transfer was received
@@ -534,8 +535,11 @@ class PosController extends Controller
     {
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
 
+        $taxRate = (float) (\App\Models\Setting::where('key', 'tax_rate')->value('value') ?? 12);
+
         $pdf = Pdf::loadView('receipts.sale', [
-            'sale' => $sale,
+            'sale'    => $sale,
+            'taxRate' => $taxRate,
         ]);
 
         $pdf->setPaper([0, 0, 226.77, 600], 'portrait'); // 80mm thermal receipt
@@ -578,64 +582,62 @@ class PosController extends Controller
         $fulfillmentLabel = $fulfillmentType ? ucfirst($fulfillmentType)                 : 'All';
         $paymentLabel     = $paymentMethod   ? ucfirst(str_replace('_', ' ', $paymentMethod)) : 'All';
 
-        $format = $request->get('format', 'pdf');
-        $sales  = $query->orderByDesc('created_at')->get();
+        $format  = $request->get('format', 'pdf');
+        $sales   = $query->orderByDesc('created_at')->get();
+        $columns = $request->has('columns') ? (array) $request->input('columns') : null;
 
         return match ($format) {
-            'csv'   => $this->exportCsv($sales, $label),
-            'xlsx'  => $this->exportXlsx($sales, $label),
-            default => $this->exportPdf($sales, $label, $statusLabel, $fulfillmentLabel, $paymentLabel),
+            'csv'   => $this->exportCsv($sales, $label, $columns),
+            'xlsx'  => $this->exportXlsx($sales, $label, $columns),
+            default => $this->exportPdf($sales, $label, $statusLabel, $fulfillmentLabel, $paymentLabel, $columns),
         };
     }
 
-    private function exportCsv($sales, string $label): Response
+    private function exportCsv($sales, string $label, ?array $selectedCols = null): Response
     {
         $filename = 'transactions-' . now()->format('Y-m-d') . '.csv';
-        $headers = [
-            'Transaction #',
-            'Date',
-            'Client',
-            'Fulfillment Type',
-            'Status',
-            'Subtotal',
-            'Discount',
-            'Total',
-            'Payment Method',
-            'Cashier',
-            'Notes',
+
+        $allCols = [
+            'transaction_number' => ['header' => 'Transaction #',   'value' => fn($s) => $s->transaction_number],
+            'date'               => ['header' => 'Date',            'value' => fn($s) => $s->created_at->format('Y-m-d H:i')],
+            'client'             => ['header' => 'Client',          'value' => fn($s) => $s->client?->business_name ?? 'Walk-in'],
+            'fulfillment_type'   => ['header' => 'Fulfillment Type','value' => fn($s) => $s->fulfillment_type],
+            'status'             => ['header' => 'Status',          'value' => fn($s) => $s->status],
+            'subtotal'           => ['header' => 'Subtotal',        'value' => fn($s) => number_format($s->subtotal, 2)],
+            'discount'           => ['header' => 'Discount',        'value' => fn($s) => number_format($s->discount_amount, 2)],
+            'total'              => ['header' => 'Total',           'value' => fn($s) => number_format($s->total_amount, 2)],
+            'payment_method'     => ['header' => 'Payment Method',  'value' => fn($s) => $s->payments->pluck('payment_method')->join(', ')],
+            'cashier'            => ['header' => 'Cashier',         'value' => fn($s) => $s->user?->name ?? 'Unknown'],
+            'notes'              => ['header' => 'Notes',           'value' => fn($s) => $s->notes ?? ''],
         ];
+        $orderedKeys = ['transaction_number','date','client','fulfillment_type','status','subtotal','discount','total','payment_method','cashier','notes'];
+        $activeCols = array_filter(
+            array_intersect_key($allCols, array_flip($orderedKeys)),
+            fn($key) => $selectedCols === null || in_array($key, $selectedCols),
+            ARRAY_FILTER_USE_KEY
+        );
 
         $handle = fopen('php://memory', 'r+');
-        fputcsv($handle, $headers);
+        fputcsv($handle, array_column($activeCols, 'header'));
 
         foreach ($sales as $sale) {
-            $paymentMethods = $sale->payments->pluck('payment_method')->join(', ');
-            fputcsv($handle, [
-                $sale->transaction_number,
-                $sale->created_at->format('Y-m-d H:i'),
-                $sale->client?->business_name ?? 'Walk-in',
-                $sale->fulfillment_type,
-                $sale->status,
-                number_format($sale->subtotal, 2),
-                number_format($sale->discount_amount, 2),
-                number_format($sale->total_amount, 2),
-                $paymentMethods,
-                $sale->user?->name ?? 'Unknown',
-                $sale->notes ?? '',
-            ]);
+            fputcsv($handle, array_map(fn($col) => ($col['value'])($sale), $activeCols));
         }
 
         // Summary rows — voided transactions are listed above but excluded from totals
         $activeSales  = $sales->reject(fn ($s) => $s->status === 'voided');
         $voidedCount  = $sales->count() - $activeSales->count();
         fputcsv($handle, []);
-        fputcsv($handle, [
-            'TOTALS (voided excluded)', '', '', '', '',
-            number_format($activeSales->sum('subtotal'),        2),
-            number_format($activeSales->sum('discount_amount'), 2),
-            number_format($activeSales->sum('total_amount'),    2),
-            '', '', '',
-        ]);
+        $totalsRow = array_map(function ($key, $col) use ($activeSales) {
+            return match ($key) {
+                'transaction_number' => 'TOTALS (voided excluded)',
+                'subtotal'           => number_format($activeSales->sum('subtotal'), 2),
+                'discount'           => number_format($activeSales->sum('discount_amount'), 2),
+                'total'              => number_format($activeSales->sum('total_amount'), 2),
+                default              => '',
+            };
+        }, array_keys($activeCols), $activeCols);
+        fputcsv($handle, $totalsRow);
         if ($voidedCount > 0) {
             fputcsv($handle, ["Note: {$voidedCount} voided transaction(s) listed above are excluded from the totals row"]);
         }
@@ -649,42 +651,57 @@ class PosController extends Controller
             ->header('Content-Disposition', "attachment; filename=\"$filename\"");
     }
 
-    private function exportXlsx($sales, string $label): Response
+    private function exportXlsx($sales, string $label, ?array $selectedCols = null): Response
     {
         $filename = 'transactions-' . now()->format('Y-m-d') . '.xlsx';
 
-        $rows = [];
-        $rows[] = ['Transaction #', 'Date', 'Client', 'Fulfillment Type', 'Status', 'Subtotal', 'Discount', 'Total', 'Payment Method', 'Cashier', 'Notes'];
+        $allColDefs = [
+            'transaction_number' => ['header' => 'Transaction #',    'value' => fn($s) => $s->transaction_number,                                   'numeric' => false],
+            'date'               => ['header' => 'Date',             'value' => fn($s) => $s->created_at->format('Y-m-d H:i'),                      'numeric' => false],
+            'client'             => ['header' => 'Client',           'value' => fn($s) => $s->client?->business_name ?? 'Walk-in',                  'numeric' => false],
+            'fulfillment_type'   => ['header' => 'Fulfillment Type', 'value' => fn($s) => $s->fulfillment_type,                                     'numeric' => false],
+            'status'             => ['header' => 'Status',           'value' => fn($s) => $s->status,                                               'numeric' => false],
+            'subtotal'           => ['header' => 'Subtotal',         'value' => fn($s) => (float) $s->subtotal,                                     'numeric' => true],
+            'discount'           => ['header' => 'Discount',         'value' => fn($s) => (float) $s->discount_amount,                              'numeric' => true],
+            'total'              => ['header' => 'Total',            'value' => fn($s) => (float) $s->total_amount,                                 'numeric' => true],
+            'payment_method'     => ['header' => 'Payment Method',   'value' => fn($s) => $s->payments->pluck('payment_method')->join(', '),        'numeric' => false],
+            'cashier'            => ['header' => 'Cashier',          'value' => fn($s) => $s->user?->name ?? 'Unknown',                             'numeric' => false],
+            'notes'              => ['header' => 'Notes',            'value' => fn($s) => $s->notes ?? '',                                          'numeric' => false],
+        ];
+        $orderedKeys = ['transaction_number','date','client','fulfillment_type','status','subtotal','discount','total','payment_method','cashier','notes'];
+        $activeCols = array_filter(
+            array_intersect_key($allColDefs, array_flip($orderedKeys)),
+            fn($key) => $selectedCols === null || in_array($key, $selectedCols),
+            ARRAY_FILTER_USE_KEY
+        );
 
+        $rows = [];
+        $rows[] = array_column($activeCols, 'header');
         $strikeThroughRows = [];
 
         foreach ($sales as $sale) {
-            $paymentMethods = $sale->payments->pluck('payment_method')->join(', ');
             if ($sale->status === 'voided') {
-                $strikeThroughRows[] = count($rows); // 0-based index
+                $strikeThroughRows[] = count($rows);
             }
-            $rows[] = [
-                $sale->transaction_number,
-                $sale->created_at->format('Y-m-d H:i'),
-                $sale->client?->business_name ?? 'Walk-in',
-                $sale->fulfillment_type,
-                $sale->status,
-                (float) $sale->subtotal,
-                (float) $sale->discount_amount,
-                (float) $sale->total_amount,
-                $paymentMethods,
-                $sale->user?->name ?? 'Unknown',
-                $sale->notes ?? '',
-            ];
+            $rows[] = array_map(fn($col) => ($col['value'])($sale), $activeCols);
         }
 
-        // Summary rows — voided transactions shown with strikethrough but excluded from totals
+        // Summary rows
         $activeSales = $sales->reject(fn ($s) => $s->status === 'voided');
         $voidedCount = $sales->count() - $activeSales->count();
         $rows[] = [];
-        $rows[] = ['TOTALS (voided excluded)', '', '', '', '', (float) $activeSales->sum('subtotal'), (float) $activeSales->sum('discount_amount'), (float) $activeSales->sum('total_amount'), '', '', ''];
+        $totals = array_map(function ($key, $col) use ($activeSales) {
+            return match ($key) {
+                'transaction_number' => 'TOTALS (voided excluded)',
+                'subtotal'  => (float) $activeSales->sum('subtotal'),
+                'discount'  => (float) $activeSales->sum('discount_amount'),
+                'total'     => (float) $activeSales->sum('total_amount'),
+                default     => '',
+            };
+        }, array_keys($activeCols), $activeCols);
+        $rows[] = $totals;
         if ($voidedCount > 0) {
-            $rows[] = ["Note: {$voidedCount} voided transaction(s) shown with strikethrough above are excluded from totals", '', '', '', '', '', '', '', '', '', ''];
+            $rows[] = ["Note: {$voidedCount} voided transaction(s) shown with strikethrough above are excluded from totals"];
         }
 
         $xlsx = $this->buildXlsx($rows, $strikeThroughRows);
@@ -822,7 +839,7 @@ class PosController extends Controller
         return $letter;
     }
 
-    private function exportPdf($sales, string $label, string $statusLabel, string $fulfillmentLabel, string $paymentLabel): Response
+    private function exportPdf($sales, string $label, string $statusLabel, string $fulfillmentLabel, string $paymentLabel, ?array $columns = null): Response
     {
         $filename = 'transactions-' . now()->format('Y-m-d') . '.pdf';
 
@@ -832,6 +849,7 @@ class PosController extends Controller
             'statusLabel'      => $statusLabel,
             'fulfillmentLabel' => $fulfillmentLabel,
             'paymentLabel'     => $paymentLabel,
+            'columns'          => $columns,
         ]);
         $pdf->setOptions(['enable_php' => true]);
 

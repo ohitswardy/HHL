@@ -4,7 +4,9 @@ import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Spinner } from '../../../components/ui/Spinner';
 import { AdjustStockModal } from '../components/AdjustStockModal';
-import { HiSearch, HiAdjustments, HiExclamation, HiChevronLeft, HiChevronRight, HiRefresh, HiDocumentDownload, HiChevronDown, HiTable } from 'react-icons/hi';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
+import { HiSearch, HiAdjustments, HiExclamation, HiChevronLeft, HiChevronRight, HiRefresh, HiDocumentDownload } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Product } from '../../../types';
@@ -17,22 +19,11 @@ export function StockPage() {
   const [search, setSearch] = useState('');
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [page, setPage] = useState(1);
-  const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 20, total: 0 });
+  const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 20, total: 0, low_stock_count: 0 });
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
-  const [lowCount, setLowCount] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
-
-  /* close export dropdown on outside click */
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
 
   const fetchStock = useCallback((p: number, q: string, mode: FilterMode) => {
     setLoading(true);
@@ -45,11 +36,6 @@ export function StockPage() {
         const data: Product[] = res.data.data;
         setProducts(data);
         setMeta(res.data.meta);
-        // count low-stock among all results when not already filtering
-        if (mode !== 'low') {
-          const low = data.filter((pr) => (pr.stock?.quantity_on_hand ?? 0) <= pr.reorder_level).length;
-          setLowCount(low);
-        }
       })
       .catch(() => toast.error('Failed to load stock'))
       .finally(() => setLoading(false));
@@ -95,33 +81,22 @@ export function StockPage() {
     link.remove(); window.URL.revokeObjectURL(url);
   };
 
-  const handleExportPdf = async (filtered: boolean) => {
-    setExportOpen(false);
+  const handleExport = async (format: ExportFormat, columns: string[], filtered: boolean) => {
+    setExportPickerOpen(false);
     setExporting(true);
     try {
-      const params = buildExportParams(filtered);
-      const response = await api.get('/inventory/export/pdf', { params, responseType: 'blob' });
+      const params = { ...buildExportParams(filtered), columns };
       const suffix = filtered ? `-filtered-${new Date().toISOString().slice(0, 10)}` : `-all-${new Date().toISOString().slice(0, 10)}`;
-      downloadBlob(new Blob([response.data]), `stock-report${suffix}.pdf`);
-      toast.success(`${filtered ? 'Filtered' : 'All'} stock exported as PDF`);
+      if (format === 'pdf') {
+        const response = await api.get('/inventory/export/pdf', { params, responseType: 'blob' });
+        downloadBlob(new Blob([response.data]), `stock-report${suffix}.pdf`);
+      } else {
+        const response = await api.get('/inventory/export/csv', { params, responseType: 'blob' });
+        downloadBlob(new Blob([response.data], { type: 'text/csv' }), `stock-report${suffix}.csv`);
+      }
+      toast.success(`${filtered ? 'Filtered' : 'All'} stock exported as ${format.toUpperCase()}`);
     } catch {
-      toast.error('Failed to export PDF');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleExportCsv = async (filtered: boolean) => {
-    setExportOpen(false);
-    setExporting(true);
-    try {
-      const params = buildExportParams(filtered);
-      const response = await api.get('/inventory/export/csv', { params, responseType: 'blob' });
-      const suffix = filtered ? `-filtered-${new Date().toISOString().slice(0, 10)}` : `-all-${new Date().toISOString().slice(0, 10)}`;
-      downloadBlob(new Blob([response.data], { type: 'text/csv' }), `stock-report${suffix}.csv`);
-      toast.success(`${filtered ? 'Filtered' : 'All'} stock exported as CSV`);
-    } catch {
-      toast.error('Failed to export CSV');
+      toast.error('Failed to export');
     } finally {
       setExporting(false);
     }
@@ -148,7 +123,7 @@ export function StockPage() {
 
   const filterTabs: { key: FilterMode; label: string }[] = [
     { key: 'all', label: 'All Products' },
-    { key: 'low', label: `Low Stock${lowCount > 0 ? ` (${lowCount})` : ''}` },
+    { key: 'low', label: `Low Stock${meta.low_stock_count > 0 ? ` (${meta.low_stock_count})` : ''}` },
     { key: 'ok', label: 'OK' },
   ];
 
@@ -173,38 +148,16 @@ export function StockPage() {
             <HiRefresh className="w-4 h-4 mr-1" />
             Refresh
           </Button>
-          {/* ── Export dropdown ── */}
-          <div className="relative" ref={exportRef}>
-            <Button variant="secondary" size="sm" onClick={() => setExportOpen((v) => !v)} disabled={exporting}>
-              {exporting ? <span className="w-4 h-4 mr-1 animate-spin">&#8987;</span> : <HiDocumentDownload className="w-4 h-4 mr-1" />}
-              Export
-              <HiChevronDown className="w-3 h-3 ml-1" />
-            </Button>
-            {exportOpen && (
-              <div className="neu-dropdown" style={{ right: 0, left: 'auto', minWidth: '13rem' }}>
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>PDF</div>
-                <button onClick={() => handleExportPdf(false)} disabled={exporting} className="neu-dropdown-item">
-                  <HiDocumentDownload className="w-4 h-4" /> All Stock (PDF)
-                </button>
-                <button onClick={() => handleExportPdf(true)} disabled={exporting} className="neu-dropdown-item">
-                  <HiDocumentDownload className="w-4 h-4" /> Filtered Stock (PDF)
-                </button>
-                <div className="border-t border-(--n-border) my-1" />
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--n-text-dim)' }}>CSV</div>
-                <button onClick={() => handleExportCsv(false)} disabled={exporting} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4" /> All Stock (CSV)
-                </button>
-                <button onClick={() => handleExportCsv(true)} disabled={exporting} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4" /> Filtered Stock (CSV)
-                </button>
-              </div>
-            )}
-          </div>
+          {/* ── Export ── */}
+          <Button variant="secondary" size="sm" onClick={() => setExportPickerOpen(true)} disabled={exporting}>
+            {exporting ? <span className="w-4 h-4 mr-1 animate-spin">&#8987;</span> : <HiDocumentDownload className="w-4 h-4 mr-1" />}
+            Export
+          </Button>
         </div>
       </div>
 
       {/* Low-stock banner */}
-      {lowCount > 0 && filterMode !== 'low' && (
+      {meta.low_stock_count > 0 && filterMode !== 'low' && (
         <div
           className="neu-banner-danger"
           onClick={() => setFilterMode('low')}
@@ -212,7 +165,7 @@ export function StockPage() {
         >
           <HiExclamation className="w-5 h-5 text-red-500 shrink-0" />
           <p className="text-sm text-red-700 font-medium">
-            {lowCount} product{lowCount > 1 ? 's are' : ' is'} below reorder level.
+            {meta.low_stock_count} product{meta.low_stock_count > 1 ? 's are' : ' is'} below reorder level.
             <span className="underline ml-1">View low-stock items</span>
           </p>
         </div>
@@ -352,6 +305,18 @@ export function StockPage() {
           </div>
         )}
       </Card>
+
+      {/* Export Column Picker */}
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="stock"
+        formats={['pdf', 'csv']}
+        hasFilterOption
+        isFiltered={search.trim() !== '' || filterMode === 'low'}
+        onExport={handleExport}
+        exporting={exporting}
+      />
 
       {/* Adjust Stock Modal */}
       {adjustProduct && (

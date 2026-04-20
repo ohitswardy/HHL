@@ -10,6 +10,11 @@ Generated: {{ now()->format('F d, Y  h:i A') }}
 @if($search) &middot; Search: "{{ $search }}" @endif
 @endsection
 
+@php
+  $cols = $columns ?? ['name','sku','category','unit','on_hand','reserved','available','reorder_level','status'];
+  $has = fn(string $c) => in_array($c, $cols);
+@endphp
+
 @section('extra-styles')
 <style>
   body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9px; color: #1a1a1a; }
@@ -76,15 +81,15 @@ Generated: {{ now()->format('F d, Y  h:i A') }}
 <table>
   <thead>
     <tr>
-      <th>Product</th>
-      <th>SKU</th>
-      <th>Category</th>
-      <th>Unit</th>
-      <th class="right">On Hand</th>
-      <th class="right">Reserved</th>
-      <th class="right">Available</th>
-      <th class="right">Reorder Level</th>
-      <th class="center">Status</th>
+      @if($has('name'))         <th>Product</th>@endif
+      @if($has('sku'))          <th>SKU</th>@endif
+      @if($has('category'))     <th>Category</th>@endif
+      @if($has('unit'))         <th class="center">Unit</th>@endif
+      @if($has('on_hand'))      <th class="right">On Hand</th>@endif
+      @if($has('reserved'))     <th class="right">Reserved</th>@endif
+      @if($has('available'))    <th class="right">Available</th>@endif
+      @if($has('reorder_level'))<th class="right">Reorder Level</th>@endif
+      @if($has('status'))       <th class="center">Status</th>@endif
     </tr>
   </thead>
   <tbody>
@@ -96,20 +101,18 @@ Generated: {{ now()->format('F d, Y  h:i A') }}
       $isLow     = $onHand <= $p->reorder_level;
     @endphp
     <tr>
-      <td>{{ $p->name }}</td>
-      <td class="mono">{{ $p->sku }}</td>
-      <td class="small">{{ $p->category?->name ?? '—' }}</td>
-      <td class="center small">{{ $p->unit }}</td>
-      <td class="right">{{ number_format($onHand) }}</td>
-      <td class="right small">{{ number_format($reserved) }}</td>
-      <td class="right {{ $isLow ? 'text-red' : '' }}">{{ number_format($available) }}</td>
-      <td class="right small">{{ number_format($p->reorder_level) }}</td>
-      <td class="center">
-        <span class="badge {{ $isLow ? 'badge-low' : 'badge-ok' }}">{{ $isLow ? 'LOW' : 'OK' }}</span>
-      </td>
+      @if($has('name'))         <td>{{ $p->name }}</td>@endif
+      @if($has('sku'))          <td class="mono">{{ $p->sku }}</td>@endif
+      @if($has('category'))     <td class="small">{{ $p->category?->name ?? '—' }}</td>@endif
+      @if($has('unit'))         <td class="center small">{{ $p->unit }}</td>@endif
+      @if($has('on_hand'))      <td class="right">{{ number_format($onHand) }}</td>@endif
+      @if($has('reserved'))     <td class="right small">{{ number_format($reserved) }}</td>@endif
+      @if($has('available'))    <td class="right {{ $isLow ? 'text-red' : '' }}">{{ number_format($available) }}</td>@endif
+      @if($has('reorder_level'))<td class="right small">{{ number_format($p->reorder_level) }}</td>@endif
+      @if($has('status'))       <td class="center"><span class="badge {{ $isLow ? 'badge-low' : 'badge-ok' }}">{{ $isLow ? 'LOW' : 'OK' }}</span></td>@endif
     </tr>
     @empty
-    <tr><td colspan="9" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>
+    <tr><td colspan="{{ count($cols) }}" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>
     @endforelse
   </tbody>
 </table>

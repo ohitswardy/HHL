@@ -226,10 +226,12 @@ class PurchaseOrderController extends Controller
     public function exportListPdf(Request $request): \Illuminate\Http\Response
     {
         $pos = $this->buildListQuery($request)->get();
+        $columns = $request->has('columns') ? (array) $request->input('columns') : null;
 
         $pdf = Pdf::loadView('reports.purchase-orders', [
             'pos'         => $pos,
             'generatedAt' => now(),
+            'columns'     => $columns,
             'filters'     => [
                 'status'      => $request->get('status'),
                 'supplier_id' => $request->get('supplier_id'),
@@ -252,22 +254,31 @@ class PurchaseOrderController extends Controller
     {
         $pos = $this->buildListQuery($request)->get();
         $filename = 'purchase-orders-' . now()->format('Y-m-d') . '.csv';
+        $selectedCols = $request->has('columns') ? (array) $request->input('columns') : null;
 
-        return response()->streamDownload(function () use ($pos) {
+        $allCols = [
+            'po_number'     => ['header' => 'PO #',           'value' => fn($po) => $po->po_number],
+            'supplier'      => ['header' => 'Supplier',       'value' => fn($po) => $po->supplier?->name ?? '—'],
+            'status'        => ['header' => 'Status',         'value' => fn($po) => $po->status],
+            'items'         => ['header' => 'Items',          'value' => fn($po) => $po->items?->count() ?? 0],
+            'total'         => ['header' => 'Total (PHP)',    'value' => fn($po) => number_format((float) $po->total_amount, 2, '.', '')],
+            'expected_date' => ['header' => 'Expected Date',  'value' => fn($po) => $po->expected_date ? \Carbon\Carbon::parse($po->expected_date)->format('M d, Y') : '—'],
+            'created_date'  => ['header' => 'Created Date',  'value' => fn($po) => \Carbon\Carbon::parse($po->created_at)->format('M d, Y')],
+            'notes'         => ['header' => 'Notes',          'value' => fn($po) => $po->notes ?? ''],
+        ];
+        $orderedKeys = ['po_number','supplier','status','items','total','expected_date','created_date','notes'];
+        $activeCols = array_filter(
+            array_intersect_key($allCols, array_flip($orderedKeys)),
+            fn($key) => $selectedCols === null || in_array($key, $selectedCols),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        return response()->streamDownload(function () use ($pos, $activeCols) {
             $handle = fopen('php://output', 'w');
             fwrite($handle, "\xEF\xBB\xBF");
-            fputcsv($handle, ['PO #', 'Supplier', 'Status', 'Items', 'Total (PHP)', 'Expected Date', 'Created Date', 'Notes']);
+            fputcsv($handle, array_column($activeCols, 'header'));
             foreach ($pos as $po) {
-                fputcsv($handle, [
-                    $po->po_number,
-                    $po->supplier?->name ?? '—',
-                    $po->status,
-                    $po->items?->count() ?? 0,
-                    number_format((float) $po->total_amount, 2, '.', ''),
-                    $po->expected_date ? \Carbon\Carbon::parse($po->expected_date)->format('M d, Y') : '—',
-                    \Carbon\Carbon::parse($po->created_at)->format('M d, Y'),
-                    $po->notes ?? '',
-                ]);
+                fputcsv($handle, array_map(fn($col) => ($col['value'])($po), $activeCols));
             }
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);

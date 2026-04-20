@@ -8,7 +8,9 @@ import { Badge } from '../../../components/ui/Badge';
 import { Spinner } from '../../../components/ui/Spinner';
 import { ImportPreviewModal } from '../components/ImportPreviewModal';
 import type { ImportPreviewData } from '../components/ImportPreviewModal';
-import { HiPlus, HiPencil, HiTrash, HiSearch, HiDocumentDownload, HiUpload, HiChevronDown, HiDocumentText, HiTable, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
+import { HiPlus, HiPencil, HiTrash, HiSearch, HiDocumentDownload, HiUpload, HiDocumentText, HiTable, HiChevronLeft, HiChevronRight, HiExclamation } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Product, Category, Supplier } from '../../../types';
@@ -33,19 +35,11 @@ export function ProductsPage() {
   const [previewing, setPreviewing] = useState(false);
   const [previewData, setPreviewData] = useState<ImportPreviewData | null>(null);
 
-  // Export dropdown
-  const [exportOpen, setExportOpen] = useState(false);
+  // Export
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
 
-  // Close export dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const [lowStockCount, setLowStockCount] = useState(0);
 
   // Reset to page 1 when filters change
   useEffect(() => { setPage(1); }, [search, filterCategory, filterStatus]);
@@ -65,6 +59,7 @@ export function ProductsPage() {
   useEffect(() => {
     api.get('/categories').then((res) => setCategories(res.data.data));
     api.get('/suppliers', { params: { per_page: 100 } }).then((res) => setSuppliers(res.data.data));
+    api.get('/inventory', { params: { per_page: 1 } }).then((res) => setLowStockCount(res.data.meta?.low_stock_count ?? 0));
   }, []);
 
   // Flat list for the filter bar (plain names)
@@ -115,30 +110,22 @@ export function ProductsPage() {
     return params;
   };
 
-  const handleExportPdf = async () => {
-    setExportOpen(false); setExporting(true);
+  const handleExport = async (format: ExportFormat, columns: string[]) => {
+    setExportPickerOpen(false);
+    setExporting(true);
+    const params = { ...buildExportParams(), columns };
     try {
-      const res = await api.get('/products/export/pdf', { responseType: 'blob', params: buildExportParams() });
-      downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `products-${new Date().toISOString().slice(0, 10)}.pdf`);
-    } catch { toast.error('Failed to export PDF'); }
-    finally { setExporting(false); }
-  };
-
-  const handleExportCsv = async () => {
-    setExportOpen(false); setExporting(true);
-    try {
-      const res = await api.get('/products/export/csv', { responseType: 'blob', params: buildExportParams() });
-      downloadBlob(new Blob([res.data], { type: 'text/csv' }), `products-${new Date().toISOString().slice(0, 10)}.csv`);
-    } catch { toast.error('Failed to export CSV'); }
-    finally { setExporting(false); }
-  };
-
-  const handleExportXlsx = async () => {
-    setExportOpen(false); setExporting(true);
-    try {
-      const res = await api.get('/products/export/xlsx', { responseType: 'blob', params: buildExportParams() });
-      downloadBlob(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `products-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    } catch { toast.error('Failed to export XLSX'); }
+      if (format === 'pdf') {
+        const res = await api.get('/products/export/pdf', { responseType: 'blob', params });
+        downloadBlob(new Blob([res.data], { type: 'application/pdf' }), `products-${new Date().toISOString().slice(0, 10)}.pdf`);
+      } else if (format === 'csv') {
+        const res = await api.get('/products/export/csv', { responseType: 'blob', params });
+        downloadBlob(new Blob([res.data], { type: 'text/csv' }), `products-${new Date().toISOString().slice(0, 10)}.csv`);
+      } else {
+        const res = await api.get('/products/export/xlsx', { responseType: 'blob', params });
+        downloadBlob(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `products-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      }
+    } catch { toast.error('Failed to export'); }
     finally { setExporting(false); }
   };
 
@@ -222,27 +209,11 @@ export function ProductsPage() {
           {!loading && <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">{meta.total} product{meta.total !== 1 ? 's' : ''} total</p>}
         </div>
         <div className="flex items-center gap-2">
-          {/* Export Dropdown */}
-          <div className="relative" ref={exportRef}>
-            <Button onClick={() => setExportOpen((v) => !v)} variant="secondary" disabled={exporting}>
-              <HiDocumentDownload className="w-4 h-4 mr-2" />
-              {exporting ? 'Exporting…' : 'Export'}
-              <HiChevronDown className="w-3.5 h-3.5 ml-2" />
-            </Button>
-            {exportOpen && (
-              <div className="neu-dropdown">
-                <button onClick={handleExportPdf} className="neu-dropdown-item">
-                  <HiDocumentText className="w-4 h-4 text-red-500" /> Export as PDF
-                </button>
-                <button onClick={handleExportCsv} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4 text-green-600" /> Export as CSV
-                </button>
-                <button onClick={handleExportXlsx} className="neu-dropdown-item">
-                  <HiTable className="w-4 h-4 text-emerald-600" /> Export as XLSX
-                </button>
-              </div>
-            )}
-          </div>
+          {/* Export */}
+          <Button onClick={() => setExportPickerOpen(true)} variant="secondary" disabled={exporting}>
+            <HiDocumentDownload className="w-4 h-4 mr-2" />
+            {exporting ? 'Exporting…' : 'Export'}
+          </Button>
 
           <Button onClick={() => setImportOpen(true)} variant="secondary">
             <HiUpload className="w-4 h-4 mr-2" /> Import
@@ -252,6 +223,17 @@ export function ProductsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Low-stock banner */}
+      {lowStockCount > 0 && (
+        <div className="neu-banner-danger" style={{ cursor: 'default' }}>
+          <HiExclamation className="w-5 h-5 text-red-500 shrink-0" />
+          <p className="text-sm text-red-700 font-medium">
+            {lowStockCount} product{lowStockCount > 1 ? 's are' : ' is'} below reorder level.
+            <a href="/inventory/stock" className="underline ml-1">View low-stock items</a>
+          </p>
+        </div>
+      )}
 
       {/* Filters */}
       <Card className="p-4 mb-4">
@@ -418,6 +400,16 @@ export function ProductsPage() {
           onSuccess={handleImportSuccess}
         />
       )}
+
+      {/* Export Column Picker */}
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="products"
+        formats={['pdf', 'csv', 'xlsx']}
+        onExport={(format, columns) => handleExport(format, columns)}
+        exporting={exporting}
+      />
 
       {/* Add / Edit Product Modal */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Product' : 'New Product'} width="lg">

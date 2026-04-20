@@ -68,7 +68,11 @@ Route::prefix('v1')->group(function () {
             Route::get('/clients', [ClientController::class, 'index']);
             Route::get('/clients/{client}', [ClientController::class, 'show']);
         });
-        Route::middleware('permission:clients.create')->post('/clients', [ClientController::class, 'store']);
+        Route::middleware('permission:clients.create')->group(function () {
+            Route::post('/clients', [ClientController::class, 'store']);
+            Route::post('/clients/import/preview', [ClientController::class, 'importPreview']);
+            Route::post('/clients/import', [ClientController::class, 'import']);
+        });
         Route::middleware('permission:clients.edit')->put('/clients/{client}', [ClientController::class, 'update']);
         Route::middleware('permission:clients.delete')->delete('/clients/{client}', [ClientController::class, 'destroy']);
 

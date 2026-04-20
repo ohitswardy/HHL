@@ -63,6 +63,8 @@
 @php
     $statusCounts = $pos->groupBy('status')->map->count();
     $totalAmount  = $pos->sum('total_amount');
+    $cols = $columns ?? ['po_number','supplier','status','items','total','expected_date','created_date','notes'];
+    $has = fn(string $c) => in_array($c, $cols);
 @endphp
 
 {{-- Heading --}}
@@ -138,38 +140,41 @@
     </colgroup>
     <thead>
         <tr>
-            <th>PO #</th>
-            <th>Supplier</th>
-            <th class="c">Status</th>
-            <th class="c">Items</th>
-            <th class="r">Total (₱)</th>
-            <th>Expected</th>
-            <th>Created</th>
-            <th>Notes</th>
+            @if($has('po_number'))    <th>PO #</th>@endif
+            @if($has('supplier'))     <th>Supplier</th>@endif
+            @if($has('status'))       <th class="c">Status</th>@endif
+            @if($has('items'))        <th class="c">Items</th>@endif
+            @if($has('total'))        <th class="r">Total (₱)</th>@endif
+            @if($has('expected_date'))<th>Expected</th>@endif
+            @if($has('created_date')) <th>Created</th>@endif
+            @if($has('notes'))        <th>Notes</th>@endif
         </tr>
     </thead>
     <tbody>
         @foreach($pos as $i => $po)
         <tr class="{{ $i % 2 === 1 ? 'even' : '' }}">
-            <td class="mono">{{ $po->po_number }}</td>
-            <td>{{ $po->supplier?->name ?? '—' }}</td>
-            <td class="c">
-                @php $sc = ['draft'=>'b-draft','sent'=>'b-sent','partial'=>'b-partial','received'=>'b-received','cancelled'=>'b-cancelled'][$po->status] ?? 'b-draft'; @endphp
-                <span class="badge {{ $sc }}">{{ $po->status }}</span>
-            </td>
-            <td class="c">{{ $po->items?->count() ?? 0 }}</td>
-            <td class="r">{{ number_format($po->total_amount, 2) }}</td>
-            <td>{{ $po->expected_date ? \Carbon\Carbon::parse($po->expected_date)->format('M d, Y') : '—' }}</td>
-            <td>{{ \Carbon\Carbon::parse($po->created_at)->format('M d, Y') }}</td>
-            <td style="font-size:6.5pt;color:#4a5568">{{ $po->notes ?? '' }}</td>
+            @if($has('po_number'))     <td class="mono">{{ $po->po_number }}</td>@endif
+            @if($has('supplier'))      <td>{{ $po->supplier?->name ?? '—' }}</td>@endif
+            @if($has('status'))
+                <td class="c">
+                    @php $sc = ['draft'=>'b-draft','sent'=>'b-sent','partial'=>'b-partial','received'=>'b-received','cancelled'=>'b-cancelled'][$po->status] ?? 'b-draft'; @endphp
+                    <span class="badge {{ $sc }}">{{ $po->status }}</span>
+                </td>
+            @endif
+            @if($has('items'))         <td class="c">{{ $po->items?->count() ?? 0 }}</td>@endif
+            @if($has('total'))         <td class="r">{{ number_format($po->total_amount, 2) }}</td>@endif
+            @if($has('expected_date')) <td>{{ $po->expected_date ? \Carbon\Carbon::parse($po->expected_date)->format('M d, Y') : '—' }}</td>@endif
+            @if($has('created_date'))  <td>{{ \Carbon\Carbon::parse($po->created_at)->format('M d, Y') }}</td>@endif
+            @if($has('notes'))         <td style="font-size:6.5pt;color:#4a5568">{{ $po->notes ?? '' }}</td>@endif
         </tr>
         @endforeach
     </tbody>
     <tfoot>
         <tr>
-            <td colspan="4">Total: {{ $pos->count() }} purchase orders</td>
-            <td class="r">{{ number_format($totalAmount, 2) }}</td>
-            <td colspan="3"></td>
+            <td colspan="{{ count(array_filter(['po_number','supplier','status','items'], fn($c) => $has($c))) }}">Total: {{ $pos->count() }} purchase orders</td>
+            @if($has('total'))<td class="r">{{ number_format($totalAmount, 2) }}</td>@endif
+            @php $trailCols = count(array_filter(['expected_date','created_date','notes'], fn($c) => $has($c))); @endphp
+            @if($trailCols > 0)<td colspan="{{ $trailCols }}"></td>@endif
         </tr>
     </tfoot>
 </table>

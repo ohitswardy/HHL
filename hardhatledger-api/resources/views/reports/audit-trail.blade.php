@@ -54,6 +54,9 @@ Generated: {{ $generatedAt }}
 @php
   $actionCounts = $logs->groupBy('action')->map->count();
   $hasFilters = collect($filters)->filter()->isNotEmpty();
+  $cols = $columns ?? ['created_at','user','action','table_name','record_id','ip_address'];
+  $has = fn(string $c) => in_array($c, $cols);
+  $colCount = count($cols) + 1; // +1 for details col which is always shown
 @endphp
 
 <div class="summary-bar">
@@ -78,12 +81,12 @@ Generated: {{ $generatedAt }}
 <table>
   <thead>
     <tr>
-      <th style="width:12%">Timestamp</th>
-      <th style="width:14%">User</th>
-      <th class="center" style="width:9%">Action</th>
-      <th style="width:14%">Module</th>
-      <th class="center" style="width:7%">Record ID</th>
-      <th style="width:12%">IP Address</th>
+      @if($has('created_at'))<th style="width:12%">Timestamp</th>@endif
+      @if($has('user'))<th style="width:14%">User</th>@endif
+      @if($has('action'))<th class="center" style="width:9%">Action</th>@endif
+      @if($has('table_name'))<th style="width:14%">Module</th>@endif
+      @if($has('record_id'))<th class="center" style="width:7%">Record ID</th>@endif
+      @if($has('ip_address'))<th style="width:12%">IP Address</th>@endif
       <th style="width:32%">Details</th>
     </tr>
   </thead>
@@ -99,14 +102,12 @@ Generated: {{ $generatedAt }}
       };
     @endphp
     <tr>
-      <td class="mono">{{ \Carbon\Carbon::parse($log->created_at)->format('M d, Y H:i:s') }}</td>
-      <td>{{ $log->user?->name ?? 'System' }}</td>
-      <td class="center">
-        <span class="badge {{ $badgeClass }}">{{ strtoupper($log->action) }}</span>
-      </td>
-      <td>{{ ucfirst(str_replace('_', ' ', $log->table_name)) }}</td>
-      <td class="center dim">{{ $log->record_id ?? '—' }}</td>
-      <td class="mono dim">{{ $log->ip_address ?? '—' }}</td>
+      @if($has('created_at'))<td class="mono">{{ \Carbon\Carbon::parse($log->created_at)->format('M d, Y H:i:s') }}</td>@endif
+      @if($has('user'))<td>{{ $log->user?->name ?? 'System' }}</td>@endif
+      @if($has('action'))<td class="center"><span class="badge {{ $badgeClass }}">{{ strtoupper($log->action) }}</span></td>@endif
+      @if($has('table_name'))<td>{{ ucfirst(str_replace('_', ' ', $log->table_name)) }}</td>@endif
+      @if($has('record_id'))<td class="center dim">{{ $log->record_id ?? '—' }}</td>@endif
+      @if($has('ip_address'))<td class="mono dim">{{ $log->ip_address ?? '—' }}</td>@endif
       <td class="dim">
         @if($log->new_values)
           @php $vals = is_string($log->new_values) ? json_decode($log->new_values, true) : $log->new_values; @endphp
@@ -119,7 +120,7 @@ Generated: {{ $generatedAt }}
     </tr>
     @empty
     <tr>
-      <td colspan="7" style="text-align:center;padding:20px;color:#64748b;">No audit events found for the selected filters.</td>
+      <td colspan="{{ $colCount }}" style="text-align:center;padding:20px;color:#64748b;">No audit events found for the selected filters.</td>
     </tr>
     @endforelse
   </tbody>
