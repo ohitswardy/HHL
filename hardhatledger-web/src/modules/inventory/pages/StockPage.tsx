@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
+import { SearchBar } from '../../../components/ui/SearchBar';
 import { Spinner } from '../../../components/ui/Spinner';
 import { AdjustStockModal } from '../components/AdjustStockModal';
 import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
 import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
-import { HiSearch, HiAdjustments, HiExclamation, HiChevronLeft, HiChevronRight, HiRefresh, HiDocumentDownload } from 'react-icons/hi';
+import { useDebounce } from '../../../lib/useDebounce';
+import { HiAdjustments, HiExclamation, HiChevronLeft, HiChevronRight, HiRefresh, HiDocumentDownload } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Product } from '../../../types';
@@ -17,11 +19,11 @@ export function StockPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 350);
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 20, total: 0, low_stock_count: 0 });
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportPickerOpen, setExportPickerOpen] = useState(false);
 
@@ -46,13 +48,9 @@ export function StockPage() {
 
   // Debounced search
   useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      setPage(1);
-      fetchStock(1, search, filterMode);
-    }, 350);
-    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
-  }, [search]);
+    setPage(1);
+    fetchStock(1, debouncedSearch, filterMode);
+  }, [debouncedSearch]);
 
   // Filter mode change
   useEffect(() => {
@@ -176,12 +174,10 @@ export function StockPage() {
         <div className="flex flex-wrap gap-3 items-center justify-between">
           {/* Search */}
           <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
-            <input
-              className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
-              placeholder="Search by name or SKU…"
+            <SearchBar
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={setSearch}
+              placeholder="Search by name or SKU…"
             />
           </div>
 

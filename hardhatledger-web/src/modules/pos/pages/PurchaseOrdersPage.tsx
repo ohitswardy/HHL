@@ -1,14 +1,16 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { DatePicker } from '../../../components/ui/DatePicker';
 import { Input } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
+import { SearchBar } from '../../../components/ui/SearchBar';
 import { Select } from '../../../components/ui/Select';
 import { Spinner } from '../../../components/ui/Spinner';
+import { useDebounce } from '../../../lib/useDebounce';
 import {
-  HiPlus, HiEye, HiTrash, HiSearch, HiX, HiChevronLeft, HiChevronRight,
+  HiPlus, HiEye, HiTrash, HiX, HiChevronLeft, HiChevronRight,
   HiDocumentText, HiCheckCircle, HiExclamation, HiClipboardCheck, HiDownload,
   HiBan, HiDocumentDownload, HiTable,
 } from 'react-icons/hi';
@@ -100,10 +102,8 @@ export function PurchaseOrdersPage() {
 
   /* ── debounced search ── */
   const [searchInput, setSearchInput] = useState('');
-  useEffect(() => {
-    const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 350);
-    return () => clearTimeout(t);
-  }, [searchInput]);
+  const debouncedSearchInput = useDebounce(searchInput, 350);
+  useEffect(() => { setSearch(debouncedSearchInput); setPage(1); }, [debouncedSearchInput]);
 
   const openDetail = async (po: PurchaseOrder) => {
     try {
@@ -234,16 +234,12 @@ export function PurchaseOrdersPage() {
         <div className="flex flex-wrap gap-3 items-end">
           {/* Search */}
           <div className="flex-1 min-w-50">
-            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Search</label>
-            <div className="relative">
-              <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
-              <input
-                className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
-                placeholder="PO number, supplier..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-              />
-            </div>
+            <SearchBar
+              label="Search"
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="PO number, supplier…"
+            />
           </div>
 
           {/* Status filter */}

@@ -343,7 +343,7 @@ export function IncomeStatementPage() {
   .footer { margin-top:28px; font-size:9px; color:#999; text-align:center; }
 </style></head><body>
   <h1>Profit and Loss</h1>
-  <h2>HardhatLedger</h2>
+  <h2>TRI-MILLENNIUM HARDWARE TRADING</h2>
   <h3>${dayjs(period.start).format('D MMMM')}\u2013${dayjs(period.end).format('D MMMM, YYYY')}</h3>
   <table>
     <tr><td style="width:65%"></td><td class="col-hdr" style="width:35%">TOTAL</td></tr>
@@ -462,7 +462,7 @@ export function IncomeStatementPage() {
             Profit and Loss
           </h1>
           <h2 className="text-sm font-bold text-center uppercase mb-1" style={{ color: 'var(--n-text)' }}>
-            HardhatLedger
+            TRI-MILLENNIUM HARDWARE TRADING
           </h2>
           <h3 className="text-xs text-center mb-6" style={{ color: 'var(--n-text-secondary)' }}>
             {dayjs(period!.start).format('D MMMM')}&ndash;{dayjs(period!.end).format('D MMMM, YYYY')}

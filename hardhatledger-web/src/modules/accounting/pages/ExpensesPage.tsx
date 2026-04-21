@@ -4,11 +4,13 @@ import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { Input } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
+import { SearchBar } from '../../../components/ui/SearchBar';
 import { Select } from '../../../components/ui/Select';
 import { Spinner } from '../../../components/ui/Spinner';
 import { DatePicker } from '../../../components/ui/DatePicker';
+import { useDebounce } from '../../../lib/useDebounce';
 import {
-  HiPlus, HiEye, HiSearch, HiX, HiChevronLeft, HiChevronRight,
+  HiPlus, HiEye, HiX, HiChevronLeft, HiChevronRight,
   HiCurrencyDollar, HiCheckCircle, HiBan, HiFilter, HiRefresh,
   HiExclamation, HiDocumentText, HiDownload, HiDocumentDownload,
 } from 'react-icons/hi';
@@ -111,10 +113,8 @@ export function ExpensesPage() {
 
   /* ── debounced search ── */
   const [searchInput, setSearchInput] = useState('');
-  useEffect(() => {
-    const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 350);
-    return () => clearTimeout(t);
-  }, [searchInput]);
+  const debouncedSearchInput = useDebounce(searchInput, 350);
+  useEffect(() => { setSearch(debouncedSearchInput); setPage(1); }, [debouncedSearchInput]);
 
   /* ── open detail / edit ── */
   const openExpense = async (exp: Expense) => {
@@ -286,16 +286,12 @@ export function ExpensesPage() {
       <Card className="p-4">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-50">
-            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Search</label>
-            <div className="relative">
-              <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
-              <input
-                className="neu-inline-input w-full" style={{ paddingLeft: '2.25rem' }}
-                placeholder="Payee, expense #, reference..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-              />
-            </div>
+            <SearchBar
+              label="Search"
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="Payee, expense #, reference…"
+            />
           </div>
 
           <div className="w-44">

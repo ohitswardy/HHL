@@ -1,6 +1,6 @@
 @extends('layouts.pdf')
 
-@section('title', 'Balance Sheet — HardhatLedger')
+@section('title', 'Balance Sheet — TRI-MILLENNIUM HARDWARE TRADING')
 
 @section('doc-title', 'Balance Sheet')
 
@@ -166,7 +166,7 @@ As of {{ \Carbon\Carbon::parse($as_of_date)->format('F d, Y') }}
 <div class="page">
 
     <div class="report-title">Balance Sheet</div>
-    <div class="company-name">HardhatLedger</div>
+    <div class="company-name">TRI-MILLENNIUM HARDWARE TRADING</div>
     <div class="report-period">
         As of {{ \Carbon\Carbon::parse($as_of_date)->format('j M, Y') }}
     </div>

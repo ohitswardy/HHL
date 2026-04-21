@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
+import { SearchBar } from '../../../components/ui/SearchBar';
 import { Spinner } from '../../../components/ui/Spinner';
 import api from '../../../lib/api';
-import { HiPlus, HiPencil, HiTrash, HiDownload, HiPrinter, HiDocumentDuplicate, HiSearch, HiX, HiBookOpen, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
+import { HiPlus, HiPencil, HiTrash, HiDownload, HiPrinter, HiDocumentDuplicate, HiX, HiBookOpen, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 import type { ChartOfAccount } from '../../../types';
 import dayjs from 'dayjs';
 import { AccountFormModal, type AccountFormData, AccountLedgerModal, ImportModal } from '../components/ChartOfAccountsModals';
@@ -309,16 +310,10 @@ export function ChartOfAccountsPage() {
       <Card className="p-4 mb-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <HiSearch
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-              style={{ color: 'var(--n-text-secondary)' }}
-            />
-            <input
-              type="text"
+            <SearchBar
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={setSearchTerm}
               placeholder="Search by name, code, or detail type…"
-              className="neu-input w-full pl-9"
             />
           </div>
           <select

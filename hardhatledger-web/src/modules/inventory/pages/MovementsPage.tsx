@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { DatePicker } from '../../../components/ui/DatePicker';
+import { SearchBar } from '../../../components/ui/SearchBar';
 import { Spinner } from '../../../components/ui/Spinner';
 import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
 import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
-import { HiSearch, HiChevronLeft, HiChevronRight, HiFilter, HiX, HiDocumentDownload } from 'react-icons/hi';
+import { useDebounce } from '../../../lib/useDebounce';
+import { HiChevronLeft, HiChevronRight, HiFilter, HiX, HiDocumentDownload } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -30,6 +32,7 @@ export function MovementsPage() {
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 350);
   const [filterType, setFilterType] = useState<MovementType>('');
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
@@ -52,11 +55,9 @@ export function MovementsPage() {
     if (filterFrom) params.from = filterFrom;
     if (filterTo)   params.to   = filterTo;
     if (filterType) params.type = filterType;
-    if (search.trim()) params.search = search.trim();
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
     return params;
   };
-
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleExport = async (format: ExportFormat, columns: string[], filtered: boolean) => {
     setExportPickerOpen(false);
@@ -98,13 +99,9 @@ export function MovementsPage() {
 
   // Debounced search
   useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      setPage(1);
-      fetchMovements(1, search, filterType, filterFrom, filterTo);
-    }, 350);
-    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
-  }, [search]);
+    setPage(1);
+    fetchMovements(1, debouncedSearch, filterType, filterFrom, filterTo);
+  }, [debouncedSearch]);
 
   // Other filter changes
   useEffect(() => {
@@ -165,12 +162,10 @@ export function MovementsPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           {/* Search */}
           <div className="relative md:col-span-1">
-            <HiSearch className="absolute left-3 top-2.5 text-[var(--n-text-dim)] w-4 h-4" />
-            <input
-              className="neu-inline-input w-full" style={{ paddingLeft: "2.25rem" }}
-              placeholder="Search product…"
+            <SearchBar
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={setSearch}
+              placeholder="Search product…"
             />
           </div>
 

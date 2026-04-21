@@ -335,7 +335,7 @@ export function BalanceSheetPage() {
       + '.footer { margin-top:28px; font-size:9px; color:#999; text-align:center; }'
       + '</style></head><body>'
       + '<h1>Balance Sheet</h1>'
-      + '<h2>HardhatLedger</h2>'
+      + '<h2>TRI-MILLENNIUM HARDWARE TRADING</h2>'
       + '<h3>As of ' + dayjs(asOfDate).format('D MMMM, YYYY') + '</h3>'
       + '<table><tr><td style="width:60%"></td><td class="col-hdr" style="width:40%">TOTAL</td></tr>'
       + rows
@@ -464,7 +464,7 @@ export function BalanceSheetPage() {
           )}
 
           <h1 className="text-xl text-center mb-1" style={{ fontWeight: 400, color: 'var(--n-text)' }}>Balance Sheet</h1>
-          <h2 className="text-sm font-bold text-center uppercase mb-1" style={{ color: 'var(--n-text)' }}>HardhatLedger</h2>
+          <h2 className="text-sm font-bold text-center uppercase mb-1" style={{ color: 'var(--n-text)' }}>TRI-MILLENNIUM HARDWARE TRADING</h2>
           <h3 className="text-xs text-center mb-6" style={{ color: 'var(--n-text-secondary)' }}>As of {dayjs(asOfDate).format('D MMM, YYYY')}</h3>
 
           <table className="w-full" style={{ borderCollapse: 'collapse' }}>

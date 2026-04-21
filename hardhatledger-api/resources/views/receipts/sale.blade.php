@@ -21,7 +21,7 @@
 </head>
 <body>
     <div class="header center">
-        <h1>HARDHATLEDGER</h1>
+        <h1>TRI-MILLENNIUM HARDWARE TRADING</h1>
         <p>Construction Materials Supplier</p>
         <p>Official Receipt</p>
     </div>

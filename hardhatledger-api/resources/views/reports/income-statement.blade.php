@@ -1,6 +1,6 @@
 @extends('layouts.pdf')
 
-@section('title', 'Profit and Loss — HardhatLedger')
+@section('title', 'Profit and Loss — TRI-MILLENNIUM HARDWARE TRADING')
 
 @section('doc-title', 'Profit and Loss')
 
@@ -141,7 +141,7 @@
 <div class="page">
 
     <div class="report-title">Profit and Loss</div>
-    <div class="company-name">HardhatLedger</div>
+    <div class="company-name">TRI-MILLENNIUM HARDWARE TRADING</div>
     <div class="report-period">
         {{ \Carbon\Carbon::parse($period['start'])->format('j F') }}&ndash;{{ \Carbon\Carbon::parse($period['end'])->format('j F, Y') }}
     </div>

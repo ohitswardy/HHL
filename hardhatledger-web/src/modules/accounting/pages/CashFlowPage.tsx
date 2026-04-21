@@ -342,7 +342,7 @@ export function CashFlowPage() {
           <Card className="p-6">
             <div ref={printRef}>
               <h1 className="text-xl font-bold text-center text-[var(--n-text)] mb-0.5">
-                HardhatLedger
+                TRI-MILLENNIUM HARDWARE TRADING
               </h1>
               <h2 className="text-sm text-center text-[var(--n-text-secondary)] mb-6">
                 Cash Flow Statement &mdash;{' '}

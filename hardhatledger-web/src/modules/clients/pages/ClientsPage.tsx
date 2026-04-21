@@ -3,10 +3,12 @@ import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
+import { SearchBar } from '../../../components/ui/SearchBar';
 import { Select } from '../../../components/ui/Select';
 import { Spinner } from '../../../components/ui/Spinner';
+import { useDebounce } from '../../../lib/useDebounce';
 import {
-  HiPlus, HiPencil, HiTrash, HiSearch,
+  HiPlus, HiPencil, HiTrash,
   HiUpload, HiCheckCircle, HiXCircle, HiMinusCircle,
   HiChevronLeft, HiChevronRight,
 } from 'react-icons/hi';
@@ -312,6 +314,7 @@ export function ClientsPage() {
   const [tiers, setTiers] = useState<ClientTier[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 350);
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -321,7 +324,7 @@ export function ClientsPage() {
 
   const fetchClients = (p = page) => {
     setLoading(true);
-    api.get('/clients', { params: { search, per_page: 10, page: p } })
+    api.get('/clients', { params: { search: debouncedSearch, per_page: 10, page: p } })
       .then((res) => {
         setClients(res.data.data);
         setMeta(res.data.meta);
@@ -334,11 +337,11 @@ export function ClientsPage() {
     fetchClients(p);
   };
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when debounced search settles
   useEffect(() => {
     setPage(1);
     fetchClients(1);
-  }, [search]);
+  }, [debouncedSearch]);
 
   useEffect(() => { api.get('/client-tiers').then((res) => setTiers(res.data.data)); }, []);
 
@@ -385,12 +388,11 @@ export function ClientsPage() {
         </div>
       </div>
       <Card className="p-4 mb-4">
-        <div className="neu-search">
-          <HiSearch className="neu-search-icon w-4 h-4" />
-          <div className="neu-inset w-full">
-            <input className="neu-input" style={{ paddingLeft: '2.5rem' }} placeholder="Search clients..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-        </div>
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Search clients…"
+        />
       </Card>
       <Card>
         {loading ? <Spinner /> : (

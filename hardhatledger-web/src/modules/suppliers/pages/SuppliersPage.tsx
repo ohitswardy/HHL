@@ -3,9 +3,11 @@ import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
+import { SearchBar } from '../../../components/ui/SearchBar';
 import { Spinner } from '../../../components/ui/Spinner';
+import { useDebounce } from '../../../lib/useDebounce';
 import {
-  HiPlus, HiPencil, HiTrash, HiSearch,
+  HiPlus, HiPencil, HiTrash,
   HiUpload, HiCheckCircle, HiXCircle, HiMinusCircle,
   HiChevronLeft, HiChevronRight,
 } from 'react-icons/hi';
@@ -309,6 +311,7 @@ export function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 350);
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -318,7 +321,7 @@ export function SuppliersPage() {
 
   const fetchSuppliers = (p = page) => {
     setLoading(true);
-    api.get('/suppliers', { params: { search, per_page: 10, page: p } })
+    api.get('/suppliers', { params: { search: debouncedSearch, per_page: 10, page: p } })
       .then((res) => {
         setSuppliers(res.data.data);
         setMeta(res.data.meta);
@@ -334,7 +337,7 @@ export function SuppliersPage() {
   useEffect(() => {
     setPage(1);
     fetchSuppliers(1);
-  }, [search]);
+  }, [debouncedSearch]);
 
   const openCreate = () => {
     setEditing(null);
@@ -379,12 +382,11 @@ export function SuppliersPage() {
       </div>
 
       <Card className="p-4 mb-4">
-        <div className="neu-search">
-          <HiSearch className="neu-search-icon w-4 h-4" />
-          <div className="neu-inset w-full">
-            <input className="neu-input" style={{ paddingLeft: '2.5rem' }} placeholder="Search suppliers..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-        </div>
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Search suppliers…"
+        />
       </Card>
 
       <Card>

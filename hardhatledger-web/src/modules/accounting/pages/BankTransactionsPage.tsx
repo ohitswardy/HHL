@@ -3,10 +3,12 @@ import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { Input } from '../../../components/ui/Input';
+import { SearchBar } from '../../../components/ui/SearchBar';
 import { Spinner } from '../../../components/ui/Spinner';
 import { DatePicker } from '../../../components/ui/DatePicker';
+import { useDebounce } from '../../../lib/useDebounce';
 import {
-  HiSearch, HiDownload, HiPencil, HiCheck, HiX,
+  HiDownload, HiPencil, HiCheck, HiX,
   HiChevronLeft, HiChevronRight, HiCurrencyDollar,
   HiArrowUp, HiArrowDown, HiDocumentDownload,
 } from 'react-icons/hi';
@@ -76,6 +78,7 @@ export function BankTransactionsPage() {
   const [dateTo, setDateTo] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearchInput = useDebounce(searchInput, 350);
   const [exporting, setExporting] = useState(false);
   const [exportPickerOpen, setExportPickerOpen] = useState(false);
 
@@ -129,10 +132,7 @@ export function BankTransactionsPage() {
   const [page, setPage] = useState(1);
 
   /* ── debounced search ── */
-  useEffect(() => {
-    const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 350);
-    return () => clearTimeout(t);
-  }, [searchInput]);
+  useEffect(() => { setSearch(debouncedSearchInput); setPage(1); }, [debouncedSearchInput]);
 
   /* ── fetch ── */
   const fetchTransactions = useCallback(() => {
@@ -347,16 +347,12 @@ export function BankTransactionsPage() {
             />
           </div>
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-semibold text-[var(--n-text-secondary)] mb-1">Search</label>
-            <div className="relative">
-              <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--n-text-dim)]" />
-              <Input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search ref no, payee..."
-                style={{ paddingLeft: '2rem' }}
-              />
-            </div>
+            <SearchBar
+              label="Search"
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="Search ref no, payee…"
+            />
           </div>
             <div className="flex gap-2">
             {!editMode ? (

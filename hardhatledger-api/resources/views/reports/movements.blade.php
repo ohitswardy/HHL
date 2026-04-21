@@ -1,6 +1,6 @@
 @extends('layouts.pdf')
 
-@section('title', 'Inventory Movements — HardhatLedger')
+@section('title', 'Inventory Movements — TRI-MILLENNIUM HARDWARE TRADING')
 
 @section('doc-title', 'Inventory Movements')
 

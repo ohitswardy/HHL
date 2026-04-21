@@ -12,8 +12,6 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../../../stores/authStore';
 import type { User } from '../../../types';
 
-const ROLES = ['Sales Clerk', 'Admin', 'Manager', 'Super Admin'];
-
 const ROLE_COLORS: Record<string, string> = {
   'Super Admin': 'neu-badge neu-badge-danger',
   'Admin': 'neu-badge neu-badge-info',
@@ -33,6 +31,7 @@ const emptyForm = {
 export function UsersPage() {
   const { user: currentUser, hasRole } = useAuthStore();
   const [users, setUsers] = useState<User[]>([]);
+  const [roles, setRoles] = useState<string[]>(['Sales Clerk', 'Admin', 'Manager', 'Super Admin']);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -50,6 +49,12 @@ export function UsersPage() {
       .catch(() => toast.error('Failed to load users'))
       .finally(() => setLoading(false));
   };
+
+  useEffect(() => {
+    api.get('/roles')
+      .then((res) => setRoles(res.data.data.map((r: { name: string }) => r.name)))
+      .catch(() => {/* keep defaults */});
+  }, []);
 
   useEffect(() => { fetchUsers(); }, [search, roleFilter]);
 
@@ -166,7 +171,7 @@ export function UsersPage() {
               label=""
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              options={[{ value: '', label: 'All Roles' }, ...ROLES.map((r) => ({ value: r, label: r }))]}
+              options={[{ value: '', label: 'All Roles' }, ...roles.map((r) => ({ value: r, label: r }))]}
             />
           </div>
         </div>
@@ -274,7 +279,7 @@ export function UsersPage() {
             label="Role"
             value={form.role}
             onChange={(e) => setForm({ ...form, role: e.target.value })}
-            options={ROLES.map((r) => ({ value: r, label: r }))}
+            options={roles.map((r) => ({ value: r, label: r }))}
           />
           <Select
             label="Status"

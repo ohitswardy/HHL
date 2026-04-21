@@ -1,6 +1,6 @@
 @extends('layouts.pdf')
 
-@section('title', 'Purchase Orders — HardhatLedger')
+@section('title', 'Purchase Orders — TRI-MILLENNIUM HARDWARE TRADING')
 @section('doc-title', 'Purchase Orders')
 @section('doc-meta')Generated: {{ $generatedAt->format('F d, Y  h:i A') }}@endsection
 

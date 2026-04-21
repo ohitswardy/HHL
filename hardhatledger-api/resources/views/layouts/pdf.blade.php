@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>@yield('title', 'HardhatLedger')</title>
+    <title>@yield('title', 'TRI-MILLENNIUM HARDWARE TRADING')</title>
     <style>
         /* ── Page Setup ── */
         @page { margin: 68px 30px 52px 30px; }
@@ -89,7 +89,7 @@
 <div class="hhl-header">
     <table><tr>
         <td>
-            <span class="hhl-brand">Hardhat<span class="hhl-brand-accent">Ledger</span></span><br>
+            <span class="hhl-brand">TRI-MILLENNIUM HARDWARE TRADING</span><br>
             <span class="hhl-tagline">Construction Materials Supplier</span>
         </td>
         <td class="hhl-doc-cell">

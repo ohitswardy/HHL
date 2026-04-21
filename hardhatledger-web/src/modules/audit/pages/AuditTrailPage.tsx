@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card } from '../../../components/ui/Card';
+import { SearchBar } from '../../../components/ui/SearchBar';
 import { Spinner } from '../../../components/ui/Spinner';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Select } from '../../../components/ui/Select';
 import { DatePicker } from '../../../components/ui/DatePicker';
-import { HiClipboardList, HiSearch, HiChevronDown, HiChevronUp, HiRefresh, HiX, HiDownload, HiDocumentDownload } from 'react-icons/hi';
+import { useDebounce } from '../../../lib/useDebounce';
+import { HiClipboardList, HiChevronDown, HiChevronUp, HiRefresh, HiX, HiDownload, HiDocumentDownload } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../../stores/authStore';
@@ -274,8 +276,8 @@ export function AuditTrailPage() {
   const [exporting, setExporting] = useState(false);
   const [exportPickerOpen, setExportPickerOpen] = useState(false);
 
-  // debounce search
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounced search — syncs filters.search → appliedFilters.search after 400 ms of inactivity
+  const debouncedSearch = useDebounce(filters.search, 400);
 
   useEffect(() => {
     if (!canAccess) return;
@@ -287,11 +289,12 @@ export function AuditTrailPage() {
     fetchLogs();
   }, [appliedFilters, page, canAccess]);
 
+  // Apply debounced search to appliedFilters without triggering an extra render
+  // when the value hasn’t actually changed (e.g. on initial mount).
   useEffect(() => {
-    return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current);
-    };
-  }, []);
+    setAppliedFilters((f) => (f.search === debouncedSearch ? f : { ...f, search: debouncedSearch }));
+    setPage(1);
+  }, [debouncedSearch]);
 
   const fetchStats = () => {
     api.get('/audit-logs/stats')
@@ -321,11 +324,6 @@ export function AuditTrailPage() {
 
   const handleSearchChange = (val: string) => {
     setFilters((f) => ({ ...f, search: val }));
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      setAppliedFilters((f) => ({ ...f, search: val }));
-      setPage(1);
-    }, 400);
   };
 
   const applyFilter = (key: keyof typeof filters, val: string) => {
@@ -451,16 +449,12 @@ export function AuditTrailPage() {
       <Card className="p-4 mb-4">
         <div className="flex flex-wrap gap-3 items-end">
           {/* Search */}
-          <div className="relative flex-1 min-w-48">
-            <HiSearch className="absolute left-3 top-2.5 w-4 h-4" style={{ color: 'var(--n-text-dim)' }} />
-            <input
-              className="neu-inline-input w-full"
-              style={{ paddingLeft: '2.25rem' }}
-              placeholder="Search user, module, action, IP..."
+            <SearchBar
               value={filters.search}
-              onChange={(e) => handleSearchChange(e.target.value)}
+              onChange={handleSearchChange}
+              placeholder="Search user, module, action, IP…"
+              containerClassName="flex-1 min-w-48"
             />
-          </div>
 
           {/* Action filter */}
           <div className="w-44 shrink-0">
