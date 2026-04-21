@@ -91,7 +91,11 @@ Route::prefix('v1')->group(function () {
             Route::get('/suppliers', [SupplierController::class, 'index']);
             Route::get('/suppliers/{supplier}', [SupplierController::class, 'show']);
         });
-        Route::middleware('permission:suppliers.create')->post('/suppliers', [SupplierController::class, 'store']);
+        Route::middleware('permission:suppliers.create')->group(function () {
+            Route::post('/suppliers', [SupplierController::class, 'store']);
+            Route::post('/suppliers/import/preview', [SupplierController::class, 'importPreview']);
+            Route::post('/suppliers/import', [SupplierController::class, 'import']);
+        });
         Route::middleware('permission:suppliers.edit')->put('/suppliers/{supplier}', [SupplierController::class, 'update']);
         Route::middleware('permission:suppliers.delete')->delete('/suppliers/{supplier}', [SupplierController::class, 'destroy']);
 

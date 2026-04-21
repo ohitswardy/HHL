@@ -1,61 +1,455 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { Input } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
 import { Spinner } from '../../../components/ui/Spinner';
-import { HiPlus, HiPencil, HiTrash, HiSearch } from 'react-icons/hi';
+import {
+  HiPlus, HiPencil, HiTrash, HiSearch,
+  HiUpload, HiCheckCircle, HiXCircle, HiMinusCircle,
+  HiChevronLeft, HiChevronRight,
+} from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Supplier } from '../../../types';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface ImportPreviewRow {
+  row_num: number;
+  name: string;
+  status: 'new' | 'duplicate' | 'skip';
+  reason: string | null;
+  data: {
+    address: string | null;
+    payment_terms: string | null;
+    notes: string | null;
+  } | null;
+}
+
+interface ImportSummary {
+  new_count: number;
+  dup_count: number;
+  skip_count: number;
+  total: number;
+}
+
+// ── Import Modal ──────────────────────────────────────────────────────────────
+
+function SupplierImportModal({
+  isOpen,
+  onClose,
+  onImported,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onImported: () => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [rows, setRows] = useState<ImportPreviewRow[]>([]);
+  const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [done, setDone] = useState<{ imported: number; skipped: number } | null>(null);
+
+  const reset = () => {
+    setFile(null);
+    setRows([]);
+    setSummary(null);
+    setDone(null);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const handleClose = () => { reset(); onClose(); };
+
+  const handleFileChange = (f: File | null) => {
+    if (!f) return;
+    const ext = f.name.split('.').pop()?.toLowerCase();
+    if (!['csv', 'xlsx', 'xls'].includes(ext ?? '')) {
+      toast.error('Only CSV and XLSX files are supported');
+      return;
+    }
+    setFile(f);
+    setRows([]);
+    setSummary(null);
+    setDone(null);
+  };
+
+  const handlePreview = async () => {
+    if (!file) return;
+    setPreviewing(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post('/suppliers/import/preview', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setRows(res.data.rows);
+      setSummary(res.data.summary);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Preview failed');
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post('/suppliers/import', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setDone({ imported: res.data.imported, skipped: res.data.skipped });
+      toast.success(res.data.message);
+      onImported();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={handleClose} title="Import Suppliers" width="xl">
+      {/* ── Step 1: File pick ── */}
+      {!summary && !done && (
+        <>
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              handleFileChange(e.dataTransfer.files[0] ?? null);
+            }}
+            onClick={() => fileRef.current?.click()}
+            style={{
+              border: `2px dashed ${dragging ? 'var(--n-accent)' : 'var(--n-border)'}`,
+              borderRadius: '0.75rem',
+              padding: '2rem',
+              textAlign: 'center',
+              cursor: 'pointer',
+              background: dragging ? 'rgba(245,166,35,0.06)' : 'var(--n-bg-inset)',
+              transition: 'all 0.2s',
+            }}
+          >
+            <HiUpload className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--n-text-secondary)' }} />
+            {file ? (
+              <p className="font-semibold" style={{ color: 'var(--n-text-primary)' }}>{file.name}</p>
+            ) : (
+              <>
+                <p className="font-semibold" style={{ color: 'var(--n-text-primary)' }}>
+                  Drop your file here or click to browse
+                </p>
+                <p className="text-sm mt-1" style={{ color: 'var(--n-text-secondary)' }}>
+                  Supports CSV and XLSX — Loyverse export format accepted
+                </p>
+              </>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+            />
+          </div>
+
+          <div className="mt-3 p-3 rounded-lg text-sm" style={{ background: 'var(--n-bg-inset)', color: 'var(--n-text-secondary)' }}>
+            <strong style={{ color: 'var(--n-text-primary)' }}>Expected columns:</strong>{' '}
+            <code>Supplier Name</code>, <code>Address</code>, <code>City</code>,{' '}
+            <code>Region</code>, <code>Terms</code>, <code>Note</code>
+            <br />
+            <span className="opacity-70">
+              Loyverse CSV export is directly supported. The Website column is ignored.
+            </span>
+          </div>
+
+          {file && (
+            <div className="flex justify-end gap-3 mt-4">
+              <Button variant="secondary" onClick={handleClose}>Cancel</Button>
+              <Button variant="amber" onClick={handlePreview} disabled={previewing}>
+                {previewing ? <><Spinner /> Analyzing…</> : 'Preview Import'}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Step 2: Preview ── */}
+      {summary && !done && (
+        <>
+          <div className="flex gap-3 mt-4 mb-3 flex-wrap">
+            <span className="neu-badge" style={{ background: 'rgba(34,197,94,0.12)', color: '#16a34a' }}>
+              <HiCheckCircle className="inline w-4 h-4 mr-1" />{summary.new_count} new
+            </span>
+            <span className="neu-badge" style={{ background: 'rgba(245,166,35,0.12)', color: '#d97706' }}>
+              <HiMinusCircle className="inline w-4 h-4 mr-1" />{summary.dup_count} duplicate
+            </span>
+            <span className="neu-badge" style={{ background: 'rgba(107,114,128,0.12)', color: '#6b7280' }}>
+              <HiXCircle className="inline w-4 h-4 mr-1" />{summary.skip_count} skipped
+            </span>
+          </div>
+
+          <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+            <table className="neu-table text-sm">
+              <thead>
+                <tr>
+                  <th style={{ width: 48 }}>#</th>
+                  <th>Name</th>
+                  <th>Address</th>
+                  <th>Terms</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.row_num}>
+                    <td style={{ color: 'var(--n-text-secondary)' }}>{r.row_num}</td>
+                    <td className="font-medium">{r.name}</td>
+                    <td style={{ color: 'var(--n-text-secondary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.data?.address ?? '—'}
+                    </td>
+                    <td style={{ color: 'var(--n-text-secondary)' }}>{r.data?.payment_terms ?? '—'}</td>
+                    <td>
+                      {r.status === 'new' && (
+                        <span className="neu-badge" style={{ background: 'rgba(34,197,94,0.12)', color: '#16a34a' }}>New</span>
+                      )}
+                      {r.status === 'duplicate' && (
+                        <span className="neu-badge" style={{ background: 'rgba(245,166,35,0.12)', color: '#d97706' }}>Duplicate</span>
+                      )}
+                      {r.status === 'skip' && (
+                        <span className="neu-badge" style={{ background: 'rgba(107,114,128,0.12)', color: '#6b7280' }} title={r.reason ?? ''}>
+                          Skip
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {summary.new_count === 0 && (
+            <p className="mt-3 text-sm text-center" style={{ color: 'var(--n-text-secondary)' }}>
+              No new suppliers to import — all entries are duplicates or invalid.
+            </p>
+          )}
+
+          <div className="flex justify-between items-center mt-4">
+            <button onClick={reset} className="text-sm" style={{ color: 'var(--n-text-secondary)' }}>
+              ← Choose different file
+            </button>
+            <div className="flex gap-3">
+              <Button variant="secondary" onClick={handleClose}>Cancel</Button>
+              <Button
+                variant="amber"
+                onClick={handleImport}
+                disabled={importing || summary.new_count === 0}
+              >
+                {importing
+                  ? <><Spinner /> Importing…</>
+                  : `Import ${summary.new_count} Supplier${summary.new_count !== 1 ? 's' : ''}`}
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Step 3: Done ── */}
+      {done && (
+        <div className="text-center py-6">
+          <HiCheckCircle className="w-14 h-14 mx-auto mb-3" style={{ color: '#16a34a' }} />
+          <p className="text-xl font-bold" style={{ color: 'var(--n-text-primary)' }}>
+            {done.imported} supplier{done.imported !== 1 ? 's' : ''} imported
+          </p>
+          {done.skipped > 0 && (
+            <p className="text-sm mt-1" style={{ color: 'var(--n-text-secondary)' }}>
+              {done.skipped} rows skipped (duplicates or invalid)
+            </p>
+          )}
+          <Button variant="amber" onClick={handleClose} className="mt-5">Close</Button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+
+interface PaginationMeta {
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+}
+
+function getPageNumbers(current: number, total: number): (number | null)[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const range: (number | null)[] = [1];
+  const lo = Math.max(2, current - 1);
+  const hi = Math.min(total - 1, current + 1);
+  if (lo > 2) range.push(null);
+  for (let i = lo; i <= hi; i++) range.push(i);
+  if (hi < total - 1) range.push(null);
+  range.push(total);
+  return range;
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState({ name: '', contact_person: '', phone: '', email: '', address: '', payment_terms: '', notes: '', is_vatable: false });
 
-  const fetch = () => {
+  const fetchSuppliers = (p = page) => {
     setLoading(true);
-    api.get('/suppliers', { params: { search, per_page: 50 } }).then((res) => setSuppliers(res.data.data)).finally(() => setLoading(false));
+    api.get('/suppliers', { params: { search, per_page: 10, page: p } })
+      .then((res) => {
+        setSuppliers(res.data.data);
+        setMeta(res.data.meta);
+      })
+      .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetch(); }, [search]);
+  const handlePageChange = (p: number) => {
+    setPage(p);
+    fetchSuppliers(p);
+  };
 
-  const openCreate = () => { setEditing(null); setForm({ name: '', contact_person: '', phone: '', email: '', address: '', payment_terms: '', notes: '', is_vatable: false }); setModalOpen(true); };
-  const openEdit = (s: Supplier) => { setEditing(s); setForm({ name: s.name, contact_person: s.contact_person || '', phone: s.phone || '', email: s.email || '', address: s.address || '', payment_terms: s.payment_terms || '', notes: s.notes || '', is_vatable: s.is_vatable ?? false }); setModalOpen(true); };
+  useEffect(() => {
+    setPage(1);
+    fetchSuppliers(1);
+  }, [search]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ name: '', contact_person: '', phone: '', email: '', address: '', payment_terms: '', notes: '', is_vatable: false });
+    setModalOpen(true);
+  };
+
+  const openEdit = (s: Supplier) => {
+    setEditing(s);
+    setForm({ name: s.name, contact_person: s.contact_person || '', phone: s.phone || '', email: s.email || '', address: s.address || '', payment_terms: s.payment_terms || '', notes: s.notes || '', is_vatable: s.is_vatable ?? false });
+    setModalOpen(true);
+  };
 
   const handleSave = async () => {
     try {
-      if (editing) { await api.put(`/suppliers/${editing.id}`, form); toast.success('Updated'); }
-      else { await api.post('/suppliers', form); toast.success('Created'); }
-      setModalOpen(false); fetch();
-    } catch (err: any) { toast.error(err.response?.data?.message || 'Failed'); }
+      if (editing) {
+        await api.put(`/suppliers/${editing.id}`, form);
+        toast.success('Updated');
+      } else {
+        await api.post('/suppliers', form);
+        toast.success('Created');
+      }
+      setModalOpen(false);
+      fetchSuppliers(page);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed');
+    }
   };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="neu-page-title">Suppliers</h1>
-        <Button onClick={openCreate} variant="amber"><HiPlus className="w-4 h-4 mr-2" /> Add Supplier</Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setImportOpen(true)} variant="secondary">
+            <HiUpload className="w-4 h-4 mr-2" /> Import CSV / XLSX
+          </Button>
+          <Button onClick={openCreate} variant="amber">
+            <HiPlus className="w-4 h-4 mr-2" /> Add Supplier
+          </Button>
+        </div>
       </div>
-      <Card className="p-4 mb-4"><div className="neu-search"><HiSearch className="neu-search-icon w-4 h-4" /><div className="neu-inset w-full"><input className="neu-input" style={{ paddingLeft: "2.5rem" }} placeholder="Search suppliers..." value={search} onChange={(e) => setSearch(e.target.value)} /></div></div></Card>
-      <Card>{loading ? <Spinner /> : (
-        <div className="overflow-x-auto"><table className="neu-table"><thead ><tr>
-          <th >Name</th><th >Contact</th><th >Phone</th><th >Email</th><th >Terms</th><th >VAT</th><th className="text-right">Actions</th>
-        </tr></thead><tbody >{suppliers.map((s) => (
-          <tr key={s.id} >
-            <td className="font-medium">{s.name}</td><td style={{ color: "var(--n-text-secondary)" }}>{s.contact_person}</td><td style={{ color: "var(--n-text-secondary)" }}>{s.phone}</td><td style={{ color: "var(--n-text-secondary)" }}>{s.email}</td><td style={{ color: "var(--n-text-secondary)" }}>{s.payment_terms}</td>
-            <td>{s.is_vatable ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">VAT</span> : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Non-VAT</span>}</td>
-            <td className="text-right">
-              <button onClick={() => openEdit(s)} className="neu-btn-icon info"><HiPencil className="w-4 h-4" /></button>
-              <button onClick={async () => { if (confirm('Delete?')) { await api.delete(`/suppliers/${s.id}`); toast.success('Deleted'); fetch(); } }} className="neu-btn-icon danger ml-1"><HiTrash className="w-4 h-4" /></button>
-            </td>
-          </tr>
-        ))}</tbody></table></div>
-      )}</Card>
+
+      <Card className="p-4 mb-4">
+        <div className="neu-search">
+          <HiSearch className="neu-search-icon w-4 h-4" />
+          <div className="neu-inset w-full">
+            <input className="neu-input" style={{ paddingLeft: '2.5rem' }} placeholder="Search suppliers..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        {loading ? <Spinner /> : (
+          <div className="overflow-x-auto">
+            <table className="neu-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Address</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Terms</th>
+                  <th>VAT</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {suppliers.map((s) => (
+                  <tr key={s.id}>
+                    <td className="font-medium">{s.name}</td>
+                    <td style={{ color: 'var(--n-text-secondary)' }}>{s.address}</td>
+                    <td style={{ color: 'var(--n-text-secondary)' }}>{s.phone}</td>
+                    <td style={{ color: 'var(--n-text-secondary)' }}>{s.email}</td>
+                    <td style={{ color: 'var(--n-text-secondary)' }}>{s.payment_terms}</td>
+                    <td>
+                      {s.is_vatable
+                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">VAT</span>
+                        : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Non-VAT</span>}
+                    </td>
+                    <td className="text-right">
+                      <button onClick={() => openEdit(s)} className="neu-btn-icon info"><HiPencil className="w-4 h-4" /></button>
+                      <button onClick={async () => { if (confirm('Delete?')) { await api.delete(`/suppliers/${s.id}`); toast.success('Deleted'); fetchSuppliers(page); } }} className="neu-btn-icon danger ml-1"><HiTrash className="w-4 h-4" /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {meta && meta.last_page > 1 && (
+          <div className="neu-pagination">
+            <p className="neu-pagination-info">
+              Page {meta.current_page} of {meta.last_page} &nbsp;·&nbsp; {meta.total} results
+            </p>
+            <div className="neu-pagination-buttons">
+              <button onClick={() => handlePageChange(page - 1)} disabled={meta.current_page === 1} className="neu-pagination-btn" aria-label="Previous page">
+                <HiChevronLeft className="w-4 h-4" />
+              </button>
+              {getPageNumbers(meta.current_page, meta.last_page).map((n, i) =>
+                n === null ? (
+                  <span key={`ellipsis-${i}`} className="neu-pagination-dots">…</span>
+                ) : (
+                  <button key={n} onClick={() => handlePageChange(n)} className={`neu-pagination-btn ${meta.current_page === n ? 'active' : ''}`}>{n}</button>
+                )
+              )}
+              <button onClick={() => handlePageChange(page + 1)} disabled={meta.current_page === meta.last_page} className="neu-pagination-btn" aria-label="Next page">
+                <HiChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
+
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Supplier' : 'New Supplier'}>
         <div className="space-y-4">
           <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -75,8 +469,18 @@ export function SuppliersPage() {
             <span className="text-sm font-medium" style={{ color: 'var(--n-text)' }}>VAT-Registered Supplier</span>
           </label>
         </div>
-        <div className="flex justify-end gap-3 mt-6"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button variant="amber" onClick={handleSave}>{editing ? 'Update' : 'Create'}</Button></div>
+        <div className="flex justify-end gap-3 mt-6">
+          <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
+          <Button variant="amber" onClick={handleSave}>{editing ? 'Update' : 'Create'}</Button>
+        </div>
       </Modal>
+
+      <SupplierImportModal
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => { setPage(1); fetchSuppliers(1); }}
+      />
     </div>
   );
 }
+
