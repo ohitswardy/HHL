@@ -23,8 +23,9 @@ use Illuminate\Support\Facades\Route;
 // v1 API routes
 Route::prefix('v1')->group(function () {
 
-    // Public auth
-    Route::post('/auth/login', [AuthController::class, 'login']);
+    // Public auth — throttle: max 5 attempts per minute per IP (S1)
+    Route::post('/auth/login', [AuthController::class, 'login'])
+        ->middleware('throttle:5,1');
 
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {

@@ -344,7 +344,7 @@ class PosController extends Controller
                 'notes'            => $request->notes,
                 'status'           => $isPending ? 'pending' : 'confirmed',
                 'paid_at'          => $isPending ? null : now(),
-                'branch_id'        => $sale->branch_id ?? 1,
+                'branch_id'        => $sale->branch_id ?? config('app.default_branch_id'),
             ]);
 
             // Post journal entry for confirmed payments (DR Cash/Bank, CR AR)
@@ -851,7 +851,7 @@ class PosController extends Controller
             'paymentLabel'     => $paymentLabel,
             'columns'          => $columns,
         ]);
-        $pdf->setOptions(['enable_php' => true]);
+        $pdf->setOptions(['enable_php' => false]);
 
         return $pdf->download($filename);
     }

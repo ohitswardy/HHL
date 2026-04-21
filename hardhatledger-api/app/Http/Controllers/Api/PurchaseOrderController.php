@@ -240,7 +240,7 @@ class PurchaseOrderController extends Controller
                 'to'          => $request->get('to'),
             ],
         ])->setOptions([
-            'enable_php'           => true,
+            'enable_php' => false,
             'isHtml5ParserEnabled' => true,
             'isRemoteEnabled'      => false,
             'defaultFont'          => 'DejaVu Sans',

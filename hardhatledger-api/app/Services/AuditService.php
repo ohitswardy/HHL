@@ -31,7 +31,7 @@ class AuditService
             'old_value'  => $oldValue,
             'new_value'  => $newValue,
             'ip_address' => request()->ip(),
-            'branch_id'  => 1,
+            'branch_id'  => config('app.default_branch_id'),
         ]);
     }
 }

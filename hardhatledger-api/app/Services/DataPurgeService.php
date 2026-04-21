@@ -77,6 +77,9 @@ class DataPurgeService
 
     /**
      * Execute the purge for a given month. Returns the purge log record.
+     *
+     * Deletes are chunked in batches of 500 rows to prevent long-held table
+     * locks on busy months (P6).
      */
     public function execute(int $year, int $month, int $userId, ?string $notes = null): DataPurgeLog
     {
@@ -84,47 +87,86 @@ class DataPurgeService
         $endDate = $startDate->copy()->endOfMonth();
 
         return DB::transaction(function () use ($startDate, $endDate, $year, $month, $userId, $notes) {
-            // 1. Purge Sale Items + Payments (children first)
+            $chunkSize = 500;
+
+            // 1. Collect sale IDs, then purge children in chunks
             $salesIds = SalesTransaction::withTrashed()
                 ->whereBetween('created_at', [$startDate, $endDate])
                 ->pluck('id');
 
-            $saleItemsDeleted = SaleItem::whereIn('sales_transaction_id', $salesIds)->delete();
-            $paymentsDeleted = Payment::whereIn('sales_transaction_id', $salesIds)->delete();
+            $saleItemsDeleted = 0;
+            foreach ($salesIds->chunk($chunkSize) as $chunk) {
+                $saleItemsDeleted += SaleItem::whereIn('sales_transaction_id', $chunk)->delete();
+            }
 
-            // 2. Purge Sales Transactions (force delete to bypass soft delete)
-            $salesDeleted = SalesTransaction::withTrashed()
+            $paymentsDeleted = 0;
+            foreach ($salesIds->chunk($chunkSize) as $chunk) {
+                $paymentsDeleted += Payment::whereIn('sales_transaction_id', $chunk)->delete();
+            }
+
+            // 2. Purge Sales Transactions in chunks (force delete bypasses soft delete)
+            $salesDeleted = 0;
+            SalesTransaction::withTrashed()
                 ->whereBetween('created_at', [$startDate, $endDate])
-                ->forceDelete();
+                ->select('id')
+                ->chunkById($chunkSize, function ($rows) use (&$salesDeleted) {
+                    $salesDeleted += SalesTransaction::withTrashed()
+                        ->whereIn('id', $rows->pluck('id'))
+                        ->forceDelete();
+                });
 
-            // 3. Purge PO Items (children first)
+            // 3. Collect PO IDs, then purge children in chunks
             $poIds = PurchaseOrder::withTrashed()
                 ->whereBetween('created_at', [$startDate, $endDate])
                 ->pluck('id');
 
-            $poItemsDeleted = PurchaseOrderItem::whereIn('purchase_order_id', $poIds)->delete();
+            $poItemsDeleted = 0;
+            foreach ($poIds->chunk($chunkSize) as $chunk) {
+                $poItemsDeleted += PurchaseOrderItem::whereIn('purchase_order_id', $chunk)->delete();
+            }
 
-            // 4. Purge Purchase Orders (force delete)
-            $posDeleted = PurchaseOrder::withTrashed()
+            // 4. Purge Purchase Orders in chunks
+            $posDeleted = 0;
+            PurchaseOrder::withTrashed()
                 ->whereBetween('created_at', [$startDate, $endDate])
-                ->forceDelete();
+                ->select('id')
+                ->chunkById($chunkSize, function ($rows) use (&$posDeleted) {
+                    $posDeleted += PurchaseOrder::withTrashed()
+                        ->whereIn('id', $rows->pluck('id'))
+                        ->forceDelete();
+                });
 
-            // 5. Purge Journal Lines (children first)
+            // 5. Collect journal entry IDs, purge lines in chunks
             $journalIds = JournalEntry::withTrashed()
                 ->whereBetween('created_at', [$startDate, $endDate])
                 ->pluck('id');
 
-            $journalLinesDeleted = JournalLine::whereIn('journal_entry_id', $journalIds)->delete();
+            $journalLinesDeleted = 0;
+            foreach ($journalIds->chunk($chunkSize) as $chunk) {
+                $journalLinesDeleted += JournalLine::whereIn('journal_entry_id', $chunk)->delete();
+            }
 
-            // 6. Purge Journal Entries (force delete)
-            $journalEntriesDeleted = JournalEntry::withTrashed()
+            // 6. Purge Journal Entries in chunks
+            $journalEntriesDeleted = 0;
+            JournalEntry::withTrashed()
                 ->whereBetween('created_at', [$startDate, $endDate])
-                ->forceDelete();
+                ->select('id')
+                ->chunkById($chunkSize, function ($rows) use (&$journalEntriesDeleted) {
+                    $journalEntriesDeleted += JournalEntry::withTrashed()
+                        ->whereIn('id', $rows->pluck('id'))
+                        ->forceDelete();
+                });
 
-            // 7. Purge Expenses (force delete)
-            $expensesDeleted = Expense::withTrashed()
+            // 7. Purge Expenses in chunks
+            $expensesDeleted = 0;
+            Expense::withTrashed()
                 ->whereBetween('created_at', [$startDate, $endDate])
-                ->forceDelete();
+                ->select('id')
+                ->chunkById($chunkSize, function ($rows) use (&$expensesDeleted) {
+                    $expensesDeleted += Expense::withTrashed()
+                        ->whereIn('id', $rows->pluck('id'))
+                        ->forceDelete();
+                });
 
             // 8. Log the purge
             return DataPurgeLog::create([

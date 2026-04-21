@@ -123,4 +123,17 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Default Branch
+    |--------------------------------------------------------------------------
+    |
+    | The branch ID used for single-branch deployments. When multi-branch
+    | support is added this should be resolved from the authenticated user
+    | or request context instead.
+    |
+    */
+
+    'default_branch_id' => (int) env('DEFAULT_BRANCH_ID', 1),
+
 ];

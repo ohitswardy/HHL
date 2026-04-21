@@ -184,7 +184,7 @@ class ExpenseController extends Controller
                 'category' => $categoryName,
             ],
         ])->setOptions([
-            'enable_php'           => true,
+            'enable_php' => false,
             'isHtml5ParserEnabled' => true,
             'isRemoteEnabled'      => false,
             'defaultFont'          => 'DejaVu Sans',

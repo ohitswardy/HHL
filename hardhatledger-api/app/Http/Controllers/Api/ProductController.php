@@ -190,7 +190,7 @@ class ProductController extends Controller
             'columns'  => $columns,
         ]);
         $pdf->setPaper('a4', 'landscape');
-        $pdf->setOptions(['enable_php' => true]);
+        $pdf->setOptions(['enable_php' => false]);
 
         return $pdf->download('products-' . now()->format('Y-m-d') . '.pdf');
     }

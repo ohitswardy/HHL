@@ -17,16 +17,22 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class AccountingController extends Controller
 {
+    /** Cache key shared by all chart-of-accounts tree reads. */
+    private const COA_CACHE_KEY = 'chart_of_accounts_tree';
+
     public function chartOfAccounts(): JsonResponse
     {
-        $accounts = ChartOfAccount::whereNull('parent_id')
-            ->with('children')
-            ->orderBy('code')
-            ->get();
+        $accounts = Cache::remember(self::COA_CACHE_KEY, now()->addHours(24), function () {
+            return ChartOfAccount::whereNull('parent_id')
+                ->with('children')
+                ->orderBy('code')
+                ->get();
+        });
 
         return response()->json(['data' => ChartOfAccountResource::collection($accounts)]);
     }
@@ -51,6 +57,8 @@ class AccountingController extends Controller
 
         $account = ChartOfAccount::create($validated);
 
+        Cache::forget(self::COA_CACHE_KEY);
+
         return response()->json([
             'data' => new ChartOfAccountResource($account),
             'message' => 'Account created successfully.',
@@ -71,6 +79,8 @@ class AccountingController extends Controller
         ]);
 
         $account->update($validated);
+
+        Cache::forget(self::COA_CACHE_KEY);
 
         return response()->json([
             'data' => new ChartOfAccountResource($account->fresh()),
@@ -98,6 +108,8 @@ class AccountingController extends Controller
 
         $account->delete();
 
+        Cache::forget(self::COA_CACHE_KEY);
+
         return response()->json(['message' => 'Account deleted successfully.']);
     }
 
@@ -110,7 +122,7 @@ class AccountingController extends Controller
         $pdf = Pdf::loadView('reports.chart-of-accounts', [
             'accounts' => $accounts,
             'generated_at' => now()->format('n/j/Y'),
-        ])->setOptions(['enable_php' => true]);
+        ])->setOptions(['enable_php' => false]);
 
         return $pdf->download('chart-of-accounts.pdf');
     }
@@ -164,58 +176,86 @@ class AccountingController extends Controller
         // Debit-normal accounts (assets & expenses): balance = debits − credits
         $isDebitNormal = in_array($account->type, ['asset', 'expense']);
 
-        // ── Opening balance: all lines BEFORE the $from date ──────────────────
-        $obQuery = JournalLine::where('account_id', $id)
-            ->whereHas('journalEntry', fn ($q) => $q->whereNull('deleted_at'));
-
+        // ── Opening balance: aggregate of all lines BEFORE $from ──────────────
+        // Kept as a simple aggregate query — one round-trip, uses an index on
+        // (account_id) and filtered by the journal_entries join.
+        $obBindings = [$id];
+        $obDateWhere = '';
         if ($from) {
-            $obQuery->whereHas('journalEntry', fn ($q) => $q->whereDate('date', '<', $from));
+            $obDateWhere = 'AND DATE(je.date) < ?';
+            $obBindings[] = $from;
         }
 
-        $obDebit   = (float) $obQuery->sum('debit');
-        $obCredit  = (float) $obQuery->sum('credit');
+        $obRow = DB::selectOne(<<<SQL
+            SELECT
+                COALESCE(SUM(jl.debit),  0) AS total_debit,
+                COALESCE(SUM(jl.credit), 0) AS total_credit
+            FROM journal_lines jl
+            INNER JOIN journal_entries je ON je.id = jl.journal_entry_id AND je.deleted_at IS NULL
+            WHERE jl.account_id = ?
+              {$obDateWhere}
+        SQL, $obBindings);
+
         $openingBalance = $isDebitNormal
-            ? ($obDebit  - $obCredit)
-            : ($obCredit - $obDebit);
+            ? ((float) $obRow->total_debit  - (float) $obRow->total_credit)
+            : ((float) $obRow->total_credit - (float) $obRow->total_debit);
 
-        // ── Fetch all lines in the requested date window ──────────────────────
-        $linesQuery = JournalLine::where('account_id', $id)
-            ->with(['journalEntry.user'])
-            ->whereHas('journalEntry', function ($q) use ($from, $to) {
-                $q->whereNull('deleted_at');
-                if ($from) $q->whereDate('date', '>=', $from);
-                if ($to)   $q->whereDate('date', '<=', $to);
-            });
+        // ── Lines in the requested date window + SQL window function ──────────
+        // The window function computes cumulative SUM(debit - credit) ordered
+        // chronologically. PHP applies the opening-balance offset and account
+        // polarity in a single pass after the query returns.
+        $lnBindings = [$id];
+        $lnDateWhere = '';
+        if ($from) {
+            $lnDateWhere .= ' AND DATE(je.date) >= ?';
+            $lnBindings[] = $from;
+        }
+        if ($to) {
+            $lnDateWhere .= ' AND DATE(je.date) <= ?';
+            $lnBindings[] = $to;
+        }
 
-        // Sort by entry date then line id for chronological order
-        $allLines = $linesQuery->get()->sortBy([
-            [fn ($l) => $l->journalEntry->date, 'asc'],
-            ['id', 'asc'],
-        ])->values();
+        $rows = DB::select(<<<SQL
+            SELECT
+                jl.id,
+                jl.journal_entry_id,
+                je.date,
+                je.description,
+                je.reference_type,
+                je.reference_id,
+                CAST(jl.debit  AS DECIMAL(14,2)) AS debit,
+                CAST(jl.credit AS DECIMAL(14,2)) AS credit,
+                SUM(jl.debit - jl.credit) OVER (
+                    ORDER BY je.date ASC, jl.id ASC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ) AS cumulative_net,
+                u.name AS recorded_by
+            FROM journal_lines jl
+            INNER JOIN journal_entries je ON je.id = jl.journal_entry_id AND je.deleted_at IS NULL
+            LEFT JOIN  users u            ON u.id  = je.user_id
+            WHERE jl.account_id = ?
+              {$lnDateWhere}
+            ORDER BY je.date ASC, jl.id ASC
+        SQL, $lnBindings);
 
-        // ── Compute running balance per line ───────────────────────────────────
-        $runningBalance = $openingBalance;
-        $mapped = $allLines->map(function ($line) use (&$runningBalance, $isDebitNormal) {
-            $debit  = (float) $line->debit;
-            $credit = (float) $line->credit;
-
-            $runningBalance += $isDebitNormal
-                ? ($debit  - $credit)
-                : ($credit - $debit);
-
-            $entry = $line->journalEntry;
+        // ── Map: apply opening-balance offset + polarity ──────────────────────
+        $mapped = collect($rows)->map(function ($row) use ($openingBalance, $isDebitNormal) {
+            $cumulative = (float) $row->cumulative_net;
+            $running    = $isDebitNormal
+                ? $openingBalance + $cumulative
+                : $openingBalance - $cumulative;
 
             return [
-                'id'               => $line->id,
-                'journal_entry_id' => $line->journal_entry_id,
-                'date'             => $entry->date,
-                'description'      => $entry->description,
-                'reference_type'   => $entry->reference_type,
-                'reference_id'     => $entry->reference_id,
-                'debit'            => $debit,
-                'credit'           => $credit,
-                'running_balance'  => round($runningBalance, 2),
-                'recorded_by'      => $entry->user?->name,
+                'id'               => $row->id,
+                'journal_entry_id' => $row->journal_entry_id,
+                'date'             => $row->date,
+                'description'      => $row->description,
+                'reference_type'   => $row->reference_type,
+                'reference_id'     => $row->reference_id,
+                'debit'            => (float) $row->debit,
+                'credit'           => (float) $row->credit,
+                'running_balance'  => round($running, 2),
+                'recorded_by'      => $row->recorded_by,
             ];
         });
 
@@ -697,7 +737,7 @@ class AccountingController extends Controller
 
         $pdf = Pdf::loadView('reports.income-statement', $data);
         $pdf->setPaper('A4', 'portrait');
-        $pdf->setOptions(['enable_php' => true]);
+        $pdf->setOptions(['enable_php' => false]);
 
         $filename = "income-statement-{$request->start_date}-to-{$request->end_date}.pdf";
 
@@ -714,7 +754,7 @@ class AccountingController extends Controller
 
         $pdf = Pdf::loadView('reports.balance-sheet', $data);
         $pdf->setPaper('A4', 'portrait');
-        $pdf->setOptions(['enable_php' => true]);
+        $pdf->setOptions(['enable_php' => false]);
 
         $filename = "balance-sheet-as-of-{$request->as_of_date}.pdf";
 
@@ -748,7 +788,7 @@ class AccountingController extends Controller
 
         $pdf = Pdf::loadView('reports.income-statement', $data);
         $pdf->setPaper('A4', 'portrait');
-        $pdf->setOptions(['enable_php' => true]);
+        $pdf->setOptions(['enable_php' => false]);
 
         $filename = "income-statement-{$data['period']['start']}-to-{$data['period']['end']}.pdf";
 
@@ -794,7 +834,7 @@ class AccountingController extends Controller
 
         $pdf = Pdf::loadView('reports.balance-sheet', $data);
         $pdf->setPaper('A4', 'portrait');
-        $pdf->setOptions(['enable_php' => true]);
+        $pdf->setOptions(['enable_php' => false]);
 
         return $pdf->download("balance-sheet-as-of-{$data['as_of_date']}.pdf");
     }
@@ -900,7 +940,7 @@ class AccountingController extends Controller
         ]);
 
         $pdf->setPaper('A4', 'portrait');
-        $pdf->setOptions(['enable_php' => true]);
+        $pdf->setOptions(['enable_php' => false]);
 
         $slug     = preg_replace('/[^a-z0-9]+/i', '-', strtolower($client->business_name));
         $filename = "statement-{$slug}-{$start}-to-{$end}.pdf";

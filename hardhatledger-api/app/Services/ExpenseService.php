@@ -13,24 +13,28 @@ use Illuminate\Support\Facades\DB;
 
 class ExpenseService
 {
+    /**
+     * Generate the next EXP-YYYYMMDD-XXXX number under a row-level lock to
+     * prevent duplicate expense numbers from concurrent requests.
+     */
     public function generateExpenseNumber(): string
     {
-        $today = Carbon::today()->format('Ymd');
-        $prefix = "EXP-{$today}-";
+        return DB::transaction(function () {
+            $today  = Carbon::today()->format('Ymd');
+            $prefix = "EXP-{$today}-";
 
-        $last = Expense::withTrashed()
-            ->where('expense_number', 'like', "{$prefix}%")
-            ->orderByDesc('expense_number')
-            ->first();
+            $last = Expense::withTrashed()
+                ->where('expense_number', 'like', "{$prefix}%")
+                ->orderByDesc('expense_number')
+                ->lockForUpdate()
+                ->first();
 
-        if ($last) {
-            $lastSequence = (int) substr($last->expense_number, -4);
-            $nextSequence = $lastSequence + 1;
-        } else {
-            $nextSequence = 1;
-        }
+            $nextSequence = $last
+                ? (int) substr($last->expense_number, -4) + 1
+                : 1;
 
-        return $prefix . str_pad($nextSequence, 4, '0', STR_PAD_LEFT);
+            return $prefix . str_pad($nextSequence, 4, '0', STR_PAD_LEFT);
+        });
     }
 
     public function createExpense(array $data): Expense
@@ -50,7 +54,7 @@ class ExpenseService
                 'payment_method' => $data['payment_method'] ?? 'cash',
                 'status' => 'recorded',
                 'user_id' => Auth::id(),
-                'branch_id' => $data['branch_id'] ?? 1,
+                'branch_id' => $data['branch_id'] ?? config('app.default_branch_id'),
             ]);
 
             $this->postExpenseJournal($expense);
@@ -99,7 +103,7 @@ class ExpenseService
             'source'             => 'purchase_order',
             'purchase_order_id'  => $po->id,
             'user_id'            => Auth::id(),
-            'branch_id'          => $po->branch_id ?? 1,
+            'branch_id'          => $po->branch_id ?? config('app.default_branch_id'),
         ]);
     }
 

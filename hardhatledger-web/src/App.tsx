@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
@@ -30,6 +30,27 @@ import { AuditTrailPage } from './modules/audit/pages/AuditTrailPage';
 import { DatabaseControlPage } from './modules/admin/pages/DatabaseControlPage';
 import { useEffect } from 'react';
 
+/**
+ * Listens for the custom `hhl:unauthenticated` event dispatched by the Axios
+ * interceptor and redirects to /login via React Router so no full page reload
+ * occurs and in-memory state (e.g. TanStack Query cache) is preserved.
+ */
+function AuthEventHandler() {
+  const navigate = useNavigate();
+  const { logout } = useAuthStore();
+
+  useEffect(() => {
+    const handler = () => {
+      logout().catch(() => undefined);
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener('hhl:unauthenticated', handler);
+    return () => window.removeEventListener('hhl:unauthenticated', handler);
+  }, [navigate, logout]);
+
+  return null;
+}
+
 function App() {
   const { user, checkAuth } = useAuthStore();
 
@@ -39,6 +60,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <AuthEventHandler />
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
 

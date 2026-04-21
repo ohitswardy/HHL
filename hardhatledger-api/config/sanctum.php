@@ -47,7 +47,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Tokens expire after 480 minutes (8 hours) of issuance (S2).
+    // Override via SANCTUM_EXPIRATION env var. Set to null to disable expiry.
+    'expiration' => env('SANCTUM_EXPIRATION', 480),
 
     /*
     |--------------------------------------------------------------------------

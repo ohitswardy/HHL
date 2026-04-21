@@ -57,13 +57,4 @@ class Product extends Model
     {
         return $this->hasMany(InventoryMovement::class);
     }
-
-    public function getPriceForClient(Client $client): float
-    {
-        $tierPrice = $this->tierPrices()
-            ->where('client_tier_id', $client->client_tier_id)
-            ->first();
-
-        return $tierPrice ? (float) $tierPrice->price : (float) $this->base_selling_price;
-    }
 }

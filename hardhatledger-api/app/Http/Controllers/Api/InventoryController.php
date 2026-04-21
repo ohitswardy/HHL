@@ -141,7 +141,7 @@ class InventoryController extends Controller
         ]);
 
         $pdf->setPaper('A4', 'landscape');
-        $pdf->setOptions(['enable_php' => true]);
+        $pdf->setOptions(['enable_php' => false]);
 
         $filename = 'inventory-movements'
             . ($from ? '-'.$from : '')
@@ -228,7 +228,7 @@ class InventoryController extends Controller
             'low_stock' => $lowStock,
             'columns'   => $columns,
         ])->setOptions([
-            'enable_php'           => true,
+            'enable_php' => false,
             'isHtml5ParserEnabled' => true,
             'isRemoteEnabled'      => false,
             'defaultFont'          => 'DejaVu Sans',
@@ -287,14 +287,14 @@ class InventoryController extends Controller
 
     public function lowStock(): JsonResponse
     {
+        // Wrap both conditions inside a single where() closure so the
+        // is_active=true guard is not bypassed by the orWhere branch (B1/C3).
         $products = Product::with(['category', 'stock', 'supplier'])
             ->where('is_active', true)
-            ->whereHas('stock', function ($q) {
-                $q->whereRaw('quantity_on_hand <= (SELECT reorder_level FROM products WHERE products.id = inventory_stock.product_id)');
-            })
-            ->orWhere(function ($q) {
-                $q->where('is_active', true)
-                   ->doesntHave('stock');
+            ->where(function ($q) {
+                $q->whereHas('stock', function ($s) {
+                    $s->whereRaw('quantity_on_hand <= (SELECT reorder_level FROM products WHERE products.id = inventory_stock.product_id)');
+                })->orDoesntHave('stock');
             })
             ->orderBy('name')
             ->get();
