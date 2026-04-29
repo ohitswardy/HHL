@@ -9,8 +9,10 @@ import { useDebounce } from '../../../lib/useDebounce';
 import {
   HiPlus, HiPencil, HiTrash,
   HiUpload, HiCheckCircle, HiXCircle, HiMinusCircle,
-  HiChevronLeft, HiChevronRight,
+  HiChevronLeft, HiChevronRight, HiDocumentDownload,
 } from 'react-icons/hi';
+import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
+import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Supplier } from '../../../types';
@@ -316,6 +318,8 @@ export function SuppliersPage() {
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState({ name: '', contact_person: '', phone: '', email: '', address: '', payment_terms: '', notes: '', is_vatable: false });
 
@@ -367,11 +371,41 @@ export function SuppliersPage() {
     }
   };
 
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExport = async (format: ExportFormat, columns: string[], _filtered: boolean) => {
+    setExportPickerOpen(false);
+    setExporting(true);
+    try {
+      const params: Record<string, unknown> = { format, columns };
+      if (debouncedSearch) params.search = debouncedSearch;
+      const res = await api.get('/suppliers/export', { params, responseType: 'blob' });
+      let type = 'application/pdf';
+      let ext = 'pdf';
+      if (format === 'csv') { type = 'text/csv'; ext = 'csv'; }
+      if (format === 'xlsx') { type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; ext = 'xlsx'; }
+      downloadBlob(new Blob([res.data], { type }), `suppliers-${new Date().toISOString().slice(0, 10)}.${ext}`);
+      toast.success(`Exported as ${format.toUpperCase()}`);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="neu-page-title">Suppliers</h1>
         <div className="flex gap-2">
+          <Button onClick={() => setExportPickerOpen(true)} variant="secondary" disabled={exporting}>
+            <HiDocumentDownload className="w-4 h-4 mr-2" /> Export
+          </Button>
           <Button onClick={() => setImportOpen(true)} variant="secondary">
             <HiUpload className="w-4 h-4 mr-2" /> Import CSV / XLSX
           </Button>
@@ -481,6 +515,15 @@ export function SuppliersPage() {
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
         onImported={() => { setPage(1); fetchSuppliers(1); }}
+      />
+
+      <ExportColumnPickerModal
+        isOpen={exportPickerOpen}
+        onClose={() => setExportPickerOpen(false)}
+        exportKey="suppliers"
+        formats={['pdf', 'csv', 'xlsx']}
+        onExport={handleExport}
+        exporting={exporting}
       />
     </div>
   );

@@ -20,6 +20,7 @@ export interface ClientTier {
 export interface Client {
   id: number;
   business_name: string;
+  tin: string | null;
   contact_person: string | null;
   phone: string | null;
   address: string | null;
@@ -248,6 +249,8 @@ export interface CartItem {
   unit_price: number;
   discount: number;
   line_total: number;
+  price_override?: number | null;
+  price_override_reason?: string | null;
 }
 
 export interface BankTransaction {

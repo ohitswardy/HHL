@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import type { User } from './types';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 import { LoginPage } from './modules/auth/LoginPage';
@@ -28,7 +29,30 @@ import { UsersPage } from './modules/users/pages/UsersPage';
 import { RoleManagementPage } from './modules/roles/pages/RoleManagementPage';
 import { AuditTrailPage } from './modules/audit/pages/AuditTrailPage';
 import { DatabaseControlPage } from './modules/admin/pages/DatabaseControlPage';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
+
+/** Ordered list of routes mapped to the permission that grants access. */
+const ROUTE_PRIORITY: { path: string; permission: string }[] = [
+  { path: '/dashboard',        permission: 'dashboard.view' },
+  { path: '/pos',              permission: 'pos.access' },
+  { path: '/inventory',        permission: 'products.view' },
+  { path: '/accounting',       permission: 'accounting.view' },
+  { path: '/clients',          permission: 'clients.view' },
+  { path: '/suppliers',        permission: 'suppliers.view' },
+  { path: '/purchase-orders',  permission: 'purchase-orders.view' },
+  { path: '/users',            permission: 'users.view' },
+  { path: '/roles',            permission: 'roles.view' },
+  { path: '/admin/audit-trail',permission: 'audit-logs.view' },
+];
+
+function getFirstAccessibleRoute(user: User | null): string {
+  if (!user) return '/login';
+  const perms: string[] = user.permissions ?? [];
+  const roles: string[] = user.roles ?? [];
+  if (roles.includes('Super Admin')) return '/dashboard';
+  const match = ROUTE_PRIORITY.find((r) => perms.includes(r.permission));
+  return match?.path ?? '/login';
+}
 
 /**
  * Listens for the custom `hhl:unauthenticated` event dispatched by the Axios
@@ -58,14 +82,16 @@ function App() {
     checkAuth();
   }, []);
 
+  const homeRoute = useMemo(() => getFirstAccessibleRoute(user), [user]);
+
   return (
     <BrowserRouter>
       <AuthEventHandler />
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+        <Route path="/login" element={user ? <Navigate to={homeRoute} replace /> : <LoginPage />} />
 
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/dashboard" element={<ProtectedRoute permission="dashboard.view"><DashboardPage /></ProtectedRoute>} />
 
           {/* Inventory */}
           <Route path="/inventory" element={<ProtectedRoute permission="products.view"><ProductsPage /></ProtectedRoute>} />
@@ -102,7 +128,7 @@ function App() {
           <Route path="/accounting/tax-settings" element={<ProtectedRoute permission="accounting.view"><TaxSettingsPage /></ProtectedRoute>} />
         </Route>
 
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to={homeRoute} replace />} />
       </Routes>
     </BrowserRouter>
   );

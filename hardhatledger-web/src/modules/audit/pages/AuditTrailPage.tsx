@@ -62,15 +62,33 @@ const TABLE_LABELS: Record<string, string> = {
   expenses: 'Expenses',
   journal_entries: 'Journal Entries',
   chart_of_accounts: 'Chart of Accounts',
+  settings: 'Settings',
+  data_purge: 'Data Purge',
 };
 
 const ACTION_CONFIG: Record<string, { variant: 'success' | 'info' | 'danger' | 'warning' | 'neutral'; label: string }> = {
-  created:             { variant: 'success', label: 'Created' },
-  updated:             { variant: 'info',    label: 'Updated' },
-  deleted:             { variant: 'danger',  label: 'Deleted' },
-  permissions_updated: { variant: 'warning', label: 'Permissions' },
-  login:               { variant: 'neutral', label: 'Login' },
-  logout:              { variant: 'neutral', label: 'Logout' },
+  created:                    { variant: 'success', label: 'Created' },
+  updated:                    { variant: 'info',    label: 'Updated' },
+  deleted:                    { variant: 'danger',  label: 'Deleted' },
+  permissions_updated:        { variant: 'warning', label: 'Permissions' },
+  login:                      { variant: 'neutral', label: 'Login' },
+  logout:                     { variant: 'neutral', label: 'Logout' },
+  login_failed:               { variant: 'danger',  label: 'Login Failed' },
+  voided:                     { variant: 'danger',  label: 'Voided' },
+  cancelled:                  { variant: 'danger',  label: 'Cancelled' },
+  confirmed:                  { variant: 'success', label: 'Confirmed' },
+  received:                   { variant: 'success', label: 'Received' },
+  marked_completed:           { variant: 'success', label: 'Completed' },
+  payment_recorded:           { variant: 'success', label: 'Payment Recorded' },
+  stock_adjusted:             { variant: 'info',    label: 'Stock Adjusted' },
+  tier_prices_updated:        { variant: 'info',    label: 'Tier Prices' },
+  imported:                   { variant: 'info',    label: 'Imported' },
+  synced_from_pos:            { variant: 'info',    label: 'Synced from POS' },
+  transaction_number_updated: { variant: 'warning', label: 'TX# Updated' },
+  credit_due_date_updated:    { variant: 'warning', label: 'Due Date Updated' },
+  renamed:                    { variant: 'info',    label: 'Renamed' },
+  cloned:                     { variant: 'info',    label: 'Cloned' },
+  purged:                     { variant: 'danger',  label: 'Purged' },
 };
 
 function actionConfig(action: string) {
@@ -464,7 +482,9 @@ export function AuditTrailPage() {
               onChange={(e) => applyFilter('action', e.target.value)}
               options={[
                 { value: '', label: 'All Actions' },
-                ...actionOptions.map((a) => ({ value: a, label: actionConfig(a).label })),
+                ...Array.from(new Set([...Object.keys(ACTION_CONFIG), ...actionOptions]))
+                  .sort((a, b) => actionConfig(a).label.localeCompare(actionConfig(b).label))
+                  .map((a) => ({ value: a, label: actionConfig(a).label })),
               ]}
             />
           </div>
@@ -477,7 +497,9 @@ export function AuditTrailPage() {
               onChange={(e) => applyFilter('table_name', e.target.value)}
               options={[
                 { value: '', label: 'All Modules' },
-                ...tableOptions.map((t) => ({ value: t, label: friendlyTable(t) })),
+                ...Array.from(new Set([...Object.keys(TABLE_LABELS), ...tableOptions]))
+                  .sort((a, b) => friendlyTable(a).localeCompare(friendlyTable(b)))
+                  .map((t) => ({ value: t, label: friendlyTable(t) })),
               ]}
             />
           </div>

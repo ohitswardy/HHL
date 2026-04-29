@@ -116,7 +116,7 @@ apt install -y supervisor
 ### Option 1: Using Git (recommended if you have a GitHub/GitLab repo)
 ```bash
 cd /var/www
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git hardhatledger-api
+git clone https://github.com/ohitswardy/HHL.git hardhatledger-api
 ```
 *This downloads the backend code into `/var/www/hardhatledger-api`.*
 
@@ -152,18 +152,17 @@ APP_NAME=HardhatLedger
 APP_ENV=production
 APP_KEY=
 APP_DEBUG=false
-APP_URL=https://api.yourdomain.com
+APP_URL=https://api.tmhtledger.cloud
 
 LOG_CHANNEL=stack
 LOG_STACK=single
 LOG_LEVEL=warning
-
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=hardhatledger
 DB_USERNAME=hhl_user
-DB_PASSWORD=REPLACE_WITH_YOUR_DB_PASSWORD
+DB_PASSWORD=
 
 DEFAULT_BRANCH_ID=1
 
@@ -172,10 +171,10 @@ SESSION_LIFETIME=120
 QUEUE_CONNECTION=database
 CACHE_STORE=database
 
-FRONTEND_URL=https://app.yourdomain.com
-SANCTUM_STATEFUL_DOMAINS=app.yourdomain.com
+FRONTEND_URL=https://app.tmhtledger.cloud
+SANCTUM_STATEFUL_DOMAINS=app.tmhtledger.cloud
 SANCTUM_EXPIRATION=480
-CORS_ALLOWED_ORIGINS=https://app.yourdomain.com
+CORS_ALLOWED_ORIGINS=https://app.tmhtledger.cloud
 ```
 
 To save and exit nano: press `Ctrl + X`, then `Y`, then `Enter`.

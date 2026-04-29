@@ -12,6 +12,7 @@ use App\Models\ClientTier;
 use App\Models\InventoryStock;
 use App\Models\Product;
 use App\Models\ProductPrice;
+use App\Services\AuditService;
 use App\Services\InventoryService;
 use App\Services\PricingService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -76,6 +77,15 @@ class ProductController extends Controller
             }
         }
 
+        AuditService::log('created', 'products', $product->id, null, [
+            'sku'                => $product->sku,
+            'name'               => $product->name,
+            'cost_price'         => (float) $product->cost_price,
+            'base_selling_price' => (float) $product->base_selling_price,
+            'category_id'        => $product->category_id,
+            'supplier_id'        => $product->supplier_id,
+        ]);
+
         $product->load(['category', 'supplier', 'stock', 'tierPrices']);
         return response()->json(['data' => new ProductResource($product)], 201);
     }
@@ -88,6 +98,16 @@ class ProductController extends Controller
 
     public function update(UpdateProductRequest $request, Product $product): JsonResponse
     {
+        $old = [
+            'sku'                => $product->sku,
+            'name'               => $product->name,
+            'cost_price'         => (float) $product->cost_price,
+            'base_selling_price' => (float) $product->base_selling_price,
+            'category_id'        => $product->category_id,
+            'supplier_id'        => $product->supplier_id,
+            'is_active'          => (bool) $product->is_active,
+        ];
+
         $product->update($request->validated());
 
         if ($request->has('tier_prices')) {
@@ -101,13 +121,28 @@ class ProductController extends Controller
             }
         }
 
+        $fresh = $product->fresh();
+        AuditService::log('updated', 'products', $product->id, $old, [
+            'sku'                => $fresh->sku,
+            'name'               => $fresh->name,
+            'cost_price'         => (float) $fresh->cost_price,
+            'base_selling_price' => (float) $fresh->base_selling_price,
+            'category_id'        => $fresh->category_id,
+            'supplier_id'        => $fresh->supplier_id,
+            'is_active'          => (bool) $fresh->is_active,
+        ]);
+
         $product->load(['category', 'supplier', 'stock', 'tierPrices']);
         return response()->json(['data' => new ProductResource($product)]);
     }
 
     public function destroy(Product $product): JsonResponse
     {
+        $snapshot = ['sku' => $product->sku, 'name' => $product->name];
         $product->delete();
+
+        AuditService::log('deleted', 'products', $product->id, $snapshot, null);
+
         return response()->json(null, 204);
     }
 
@@ -130,6 +165,10 @@ class ProductController extends Controller
             'prices.*.price'           => 'nullable|numeric|min:0',
         ]);
 
+        $oldPrices = $product->tierPrices()->get()
+            ->mapWithKeys(fn ($tp) => [(int) $tp->client_tier_id => (float) $tp->price])
+            ->toArray();
+
         DB::transaction(function () use ($request, $product) {
             foreach ($request->prices as $tp) {
                 if (is_null($tp['price'])) {
@@ -147,6 +186,14 @@ class ProductController extends Controller
         });
 
         $product->load('tierPrices');
+
+        $newPrices = $product->tierPrices
+            ->mapWithKeys(fn ($tp) => [(int) $tp->client_tier_id => (float) $tp->price])
+            ->toArray();
+        AuditService::log('tier_prices_updated', 'products', $product->id,
+            ['tier_prices' => $oldPrices],
+            ['tier_prices' => $newPrices]
+        );
 
         return response()->json([
             'data' => $product->tierPrices->map(fn ($tp) => [
@@ -610,6 +657,15 @@ class ProductController extends Controller
         if ($updated  > 0) $parts[] = "{$updated} stock update(s)";
         if ($skipped  > 0) $parts[] = "{$skipped} skipped";
         $message = 'Import complete. ' . implode(', ', $parts) . '.';
+
+        if ($imported > 0 || $updated > 0) {
+            AuditService::log('imported', 'products', null, null, [
+                'imported'      => $imported,
+                'updated'       => $updated,
+                'skipped'       => $skipped,
+                'quantity_mode' => $quantityMode,
+            ]);
+        }
 
         return response()->json([
             'imported' => $imported,

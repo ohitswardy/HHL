@@ -12,6 +12,11 @@ class RoleAndPermissionSeeder extends Seeder
     {
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
+        // Dashboard permissions
+        $dashboardPermissions = [
+            'dashboard.view',
+        ];
+
         // Inventory permissions
         $inventoryPermissions = [
             'products.view', 'products.create', 'products.edit', 'products.delete',
@@ -55,6 +60,7 @@ class RoleAndPermissionSeeder extends Seeder
         ];
 
         $allPermissions = array_merge(
+            $dashboardPermissions,
             $inventoryPermissions,
             $supplierPermissions,
             $clientPermissions,
@@ -69,6 +75,7 @@ class RoleAndPermissionSeeder extends Seeder
 
         // Sales Clerk: POS access + basic client/product viewing
         Role::create(['name' => 'Sales Clerk'])->givePermissionTo([
+            'dashboard.view',
             'pos.access', 'pos.create-sale',
             'products.view', 'categories.view', 'inventory.view',
             'clients.view',
@@ -76,6 +83,7 @@ class RoleAndPermissionSeeder extends Seeder
 
         // Admin: review transactions, manage clients, view reports
         Role::create(['name' => 'Admin'])->givePermissionTo(array_merge(
+            $dashboardPermissions,
             $posPermissions,
             $clientPermissions,
             ['products.view', 'categories.view', 'inventory.view'],
@@ -86,6 +94,7 @@ class RoleAndPermissionSeeder extends Seeder
 
         // Manager: full access except system config; full user management access
         Role::create(['name' => 'Manager'])->givePermissionTo(array_merge(
+            $dashboardPermissions,
             $inventoryPermissions,
             $supplierPermissions,
             $clientPermissions,

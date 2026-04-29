@@ -9,6 +9,7 @@ use App\Http\Resources\ExpenseCategoryResource;
 use App\Http\Resources\ExpenseResource;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Services\AuditService;
 use App\Services\ExpenseService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -74,6 +75,18 @@ class ExpenseController extends Controller
         $expense = $this->expenseService->createExpense($request->validated());
         $expense->load(['category', 'supplier', 'user', 'purchaseOrder']);
 
+        AuditService::log('created', 'expenses', $expense->id, null, [
+            'expense_number'      => $expense->expense_number,
+            'date'                => $expense->date?->toDateString(),
+            'payee'               => $expense->payee,
+            'supplier_id'         => $expense->supplier_id,
+            'expense_category_id' => $expense->expense_category_id,
+            'subtotal'            => (float) $expense->subtotal,
+            'tax_amount'          => (float) $expense->tax_amount,
+            'total_amount'        => (float) $expense->total_amount,
+            'status'              => $expense->status,
+        ]);
+
         return response()->json(['data' => new ExpenseResource($expense)], 201);
     }
 
@@ -89,10 +102,30 @@ class ExpenseController extends Controller
             return response()->json(['message' => 'Cannot update a voided expense.'], 422);
         }
 
+        $old = [
+            'payee'               => $expense->payee,
+            'expense_category_id' => $expense->expense_category_id,
+            'subtotal'            => (float) $expense->subtotal,
+            'tax_amount'          => (float) $expense->tax_amount,
+            'total_amount'        => (float) $expense->total_amount,
+            'status'              => $expense->status,
+        ];
+
         $this->expenseService->updateExpense($expense, $request->validated());
 
         $expense->refresh();
         $expense->load(['category', 'supplier', 'user', 'purchaseOrder']);
+
+        AuditService::log('updated', 'expenses', $expense->id, $old, [
+            'payee'               => $expense->payee,
+            'expense_category_id' => $expense->expense_category_id,
+            'subtotal'            => (float) $expense->subtotal,
+            'tax_amount'          => (float) $expense->tax_amount,
+            'total_amount'        => (float) $expense->total_amount,
+            'status'              => $expense->status,
+            'expense_number'      => $expense->expense_number,
+        ]);
+
         return response()->json(['data' => new ExpenseResource($expense)]);
     }
 
@@ -106,6 +139,16 @@ class ExpenseController extends Controller
 
         $expense->refresh();
         $expense->load(['category', 'supplier', 'user', 'purchaseOrder']);
+
+        AuditService::log('confirmed', 'expenses', $expense->id,
+            ['status' => 'draft'],
+            [
+                'status'         => $expense->status,
+                'expense_number' => $expense->expense_number,
+                'total_amount'   => (float) $expense->total_amount,
+            ]
+        );
+
         return response()->json(['data' => new ExpenseResource($expense)]);
     }
 
@@ -119,6 +162,13 @@ class ExpenseController extends Controller
         if ($created > 0)   $parts[] = "{$created} expense draft(s) imported";
         if ($confirmed > 0) $parts[] = "{$confirmed} draft(s) auto-confirmed";
         $message = $parts ? implode(', ', $parts) . '.' : 'No changes — everything is up to date.';
+
+        if ($created > 0 || $confirmed > 0) {
+            AuditService::log('synced_from_pos', 'expenses', null, null, [
+                'created'   => $created,
+                'confirmed' => $confirmed,
+            ]);
+        }
 
         return response()->json([
             'message'   => $message,
@@ -134,9 +184,20 @@ class ExpenseController extends Controller
             return response()->json(['message' => 'Cannot void this expense.'], 422);
         }
 
+        $oldStatus = $expense->status;
+
         $this->expenseService->voidExpense($expense);
         $expense->refresh();
         $expense->load(['category', 'supplier', 'user', 'purchaseOrder']);
+
+        AuditService::log('voided', 'expenses', $expense->id,
+            ['status' => $oldStatus],
+            [
+                'status'         => $expense->status,
+                'expense_number' => $expense->expense_number,
+                'total_amount'   => (float) $expense->total_amount,
+            ]
+        );
 
         return response()->json(['data' => new ExpenseResource($expense)]);
     }

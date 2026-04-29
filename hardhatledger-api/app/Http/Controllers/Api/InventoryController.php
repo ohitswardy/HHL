@@ -8,6 +8,7 @@ use App\Http\Resources\InventoryMovementResource;
 use App\Http\Resources\ProductResource;
 use App\Models\InventoryMovement;
 use App\Models\Product;
+use App\Services\AuditService;
 use App\Services\InventoryService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -75,6 +76,13 @@ class InventoryController extends Controller
             $query->whereDate('created_at', '<=', $to);
         }
 
+        if ($search = $request->input('search')) {
+            $query->whereHas('product', fn ($q) =>
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('sku', 'like', "%{$search}%")
+            );
+        }
+
         $movements = $query->orderByDesc('created_at')
             ->paginate((int) $request->input('per_page', 20));
 
@@ -91,7 +99,8 @@ class InventoryController extends Controller
 
     public function adjustStock(AdjustStockRequest $request): JsonResponse
     {
-        $product = Product::findOrFail($request->input('product_id'));
+        $product = Product::with('stock')->findOrFail($request->input('product_id'));
+        $oldQty  = (int) ($product->stock?->quantity_on_hand ?? 0);
 
         $this->inventoryService->adjustStock(
             product: $product,
@@ -105,6 +114,21 @@ class InventoryController extends Controller
         );
 
         $product->load('stock');
+        $newQty = (int) ($product->stock?->quantity_on_hand ?? 0);
+
+        AuditService::log('stock_adjusted', 'inventory_stocks', $product->id,
+            ['quantity_on_hand' => $oldQty],
+            [
+                'quantity_on_hand' => $newQty,
+                'type'             => $request->input('type'),
+                'change'           => (int) $request->input('quantity'),
+                'unit_cost'        => $request->input('unit_cost') !== null ? (float) $request->input('unit_cost') : null,
+                'notes'            => $request->input('notes'),
+                'product_sku'      => $product->sku,
+                'product_name'     => $product->name,
+            ]
+        );
+
         return response()->json(['data' => new ProductResource($product)]);
     }
 

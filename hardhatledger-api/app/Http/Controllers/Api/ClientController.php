@@ -8,9 +8,12 @@ use App\Http\Requests\Client\UpdateClientRequest;
 use App\Http\Resources\ClientResource;
 use App\Models\Client;
 use App\Models\ClientTier;
+use App\Services\AuditService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ClientController extends Controller
 {
@@ -47,6 +50,16 @@ class ClientController extends Controller
     {
         $client = Client::create($request->validated());
         $client->load('tier');
+
+        AuditService::log('created', 'clients', $client->id, null, [
+            'business_name'  => $client->business_name,
+            'contact_person' => $client->contact_person,
+            'phone'          => $client->phone,
+            'email'          => $client->email,
+            'client_tier_id' => $client->client_tier_id,
+            'credit_limit'   => (float) $client->credit_limit,
+        ]);
+
         return response()->json(['data' => new ClientResource($client)], 201);
     }
 
@@ -58,15 +71,130 @@ class ClientController extends Controller
 
     public function update(UpdateClientRequest $request, Client $client): JsonResponse
     {
+        $old = [
+            'business_name'  => $client->business_name,
+            'contact_person' => $client->contact_person,
+            'phone'          => $client->phone,
+            'email'          => $client->email,
+            'address'        => $client->address,
+            'client_tier_id' => $client->client_tier_id,
+            'credit_limit'   => (float) $client->credit_limit,
+        ];
+
         $client->update($request->validated());
         $client->load('tier');
+
+        AuditService::log('updated', 'clients', $client->id, $old, [
+            'business_name'  => $client->business_name,
+            'contact_person' => $client->contact_person,
+            'phone'          => $client->phone,
+            'email'          => $client->email,
+            'address'        => $client->address,
+            'client_tier_id' => $client->client_tier_id,
+            'credit_limit'   => (float) $client->credit_limit,
+        ]);
+
         return response()->json(['data' => new ClientResource($client)]);
     }
 
     public function destroy(Client $client): JsonResponse
     {
+        $snapshot = [
+            'business_name' => $client->business_name,
+            'phone'         => $client->phone,
+            'email'         => $client->email,
+        ];
+
         $client->delete();
+
+        AuditService::log('deleted', 'clients', $client->id, $snapshot, null);
+
         return response()->json(null, 204);
+    }
+
+    // -------------------------------------------------------------------------
+    // EXPORT
+    // -------------------------------------------------------------------------
+    public function export(Request $request): mixed
+    {
+        $format = $request->get('format', 'csv');
+
+        $query = Client::withComputedBalance()->with('tier');
+        if ($search = $request->get('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('business_name', 'like', "%{$search}%")
+                  ->orWhere('contact_person', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%");
+            });
+        }
+        $clients = $query->orderBy('business_name')->get();
+
+        $selectedCols = $request->has('columns') ? (array) $request->input('columns') : null;
+
+        $allCols = [
+            'business_name'       => ['header' => 'Business Name',   'value' => fn($c) => $c->business_name],
+            'tin'                 => ['header' => 'TIN #',           'value' => fn($c) => $c->tin ?? ''],
+            'contact_person'      => ['header' => 'Contact Person',  'value' => fn($c) => $c->contact_person ?? ''],
+            'phone'               => ['header' => 'Phone',           'value' => fn($c) => $c->phone ?? ''],
+            'email'               => ['header' => 'Email',           'value' => fn($c) => $c->email ?? ''],
+            'address'             => ['header' => 'Address',         'value' => fn($c) => $c->address ?? ''],
+            'tier'                => ['header' => 'Client Tier',     'value' => fn($c) => $c->tier?->name ?? ''],
+            'credit_limit'        => ['header' => 'Credit Limit',    'value' => fn($c) => number_format((float) $c->credit_limit, 2, '.', '')],
+            'outstanding_balance' => ['header' => 'Balance Due',     'value' => fn($c) => number_format((float) ($c->outstanding_balance ?? 0), 2, '.', '')],
+            'notes'               => ['header' => 'Notes',           'value' => fn($c) => $c->notes ?? ''],
+            'created_at'          => ['header' => 'Date Added',      'value' => fn($c) => $c->created_at?->toDateString()],
+        ];
+
+        $orderedKeys = ['business_name','tin','contact_person','phone','email','address','tier','credit_limit','outstanding_balance','notes','created_at'];
+        $activeCols = array_filter(
+            array_intersect_key($allCols, array_flip($orderedKeys)),
+            fn($key) => $selectedCols === null || in_array($key, $selectedCols),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        if ($format === 'pdf') {
+            $pdf = Pdf::loadView('exports.clients', [
+                'clients'     => $clients,
+                'columns'     => $selectedCols,
+                'activeCols'  => $activeCols,
+                'generatedAt' => now(),
+                'search'      => $request->get('search'),
+            ])->setOptions([
+                'enable_php'           => false,
+                'isHtml5ParserEnabled' => true,
+                'isRemoteEnabled'      => false,
+                'defaultFont'          => 'DejaVu Sans',
+                'dpi'                  => 150,
+            ])->setPaper('a4', 'landscape');
+
+            return $pdf->download('clients-' . now()->format('Y-m-d') . '.pdf');
+        }
+
+        if ($format === 'xlsx') {
+            $csvStream = $this->buildClientsCsvContent($clients, $activeCols);
+            return response()->streamDownload($csvStream, 'clients-' . now()->format('Y-m-d') . '.xlsx', [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ]);
+        }
+
+        return response()->streamDownload(
+            $this->buildClientsCsvContent($clients, $activeCols),
+            'clients-' . now()->format('Y-m-d') . '.csv',
+            ['Content-Type' => 'text/csv; charset=UTF-8']
+        );
+    }
+
+    private function buildClientsCsvContent(iterable $clients, array $activeCols): \Closure
+    {
+        return function () use ($clients, $activeCols) {
+            $handle = fopen('php://output', 'w');
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, array_column($activeCols, 'header'));
+            foreach ($clients as $client) {
+                fputcsv($handle, array_map(fn($col) => ($col['value'])($client), $activeCols));
+            }
+            fclose($handle);
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -213,6 +341,13 @@ class ClientController extends Controller
         $parts = [];
         if ($imported > 0) $parts[] = "{$imported} client(s) imported";
         if ($skipped  > 0) $parts[] = "{$skipped} skipped";
+
+        if ($imported > 0) {
+            AuditService::log('imported', 'clients', null, null, [
+                'imported' => $imported,
+                'skipped'  => $skipped,
+            ]);
+        }
 
         return response()->json([
             'imported' => $imported,

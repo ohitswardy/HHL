@@ -7,9 +7,12 @@ use App\Http\Requests\Supplier\StoreSupplierRequest;
 use App\Http\Requests\Supplier\UpdateSupplierRequest;
 use App\Http\Resources\SupplierResource;
 use App\Models\Supplier;
+use App\Services\AuditService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SupplierController extends Controller
 {
@@ -40,6 +43,16 @@ class SupplierController extends Controller
     public function store(StoreSupplierRequest $request): JsonResponse
     {
         $supplier = Supplier::create($request->validated());
+
+        AuditService::log('created', 'suppliers', $supplier->id, null, [
+            'name'           => $supplier->name,
+            'contact_person' => $supplier->contact_person,
+            'phone'          => $supplier->phone,
+            'email'          => $supplier->email,
+            'payment_terms'  => $supplier->payment_terms,
+            'is_vatable'     => (bool) $supplier->is_vatable,
+        ]);
+
         return response()->json(['data' => new SupplierResource($supplier)], 201);
     }
 
@@ -50,14 +63,125 @@ class SupplierController extends Controller
 
     public function update(UpdateSupplierRequest $request, Supplier $supplier): JsonResponse
     {
+        $old = [
+            'name'           => $supplier->name,
+            'contact_person' => $supplier->contact_person,
+            'phone'          => $supplier->phone,
+            'email'          => $supplier->email,
+            'address'        => $supplier->address,
+            'payment_terms'  => $supplier->payment_terms,
+            'is_vatable'     => (bool) $supplier->is_vatable,
+        ];
+
         $supplier->update($request->validated());
+
+        AuditService::log('updated', 'suppliers', $supplier->id, $old, [
+            'name'           => $supplier->name,
+            'contact_person' => $supplier->contact_person,
+            'phone'          => $supplier->phone,
+            'email'          => $supplier->email,
+            'address'        => $supplier->address,
+            'payment_terms'  => $supplier->payment_terms,
+            'is_vatable'     => (bool) $supplier->is_vatable,
+        ]);
+
         return response()->json(['data' => new SupplierResource($supplier)]);
     }
 
     public function destroy(Supplier $supplier): JsonResponse
     {
+        $snapshot = ['name' => $supplier->name, 'phone' => $supplier->phone, 'email' => $supplier->email];
+
         $supplier->delete();
+
+        AuditService::log('deleted', 'suppliers', $supplier->id, $snapshot, null);
+
         return response()->json(null, 204);
+    }
+
+    // -------------------------------------------------------------------------
+    // EXPORT
+    // -------------------------------------------------------------------------
+    public function export(Request $request): mixed
+    {
+        $format = $request->get('format', 'csv');
+
+        $query = Supplier::query();
+        if ($search = $request->get('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('contact_person', 'like', "%{$search}%");
+            });
+        }
+        $suppliers = $query->orderBy('name')->get();
+
+        $selectedCols = $request->has('columns') ? (array) $request->input('columns') : null;
+
+        $allCols = [
+            'name'           => ['header' => 'Supplier Name',  'value' => fn($s) => $s->name],
+            'contact_person' => ['header' => 'Contact Person', 'value' => fn($s) => $s->contact_person ?? ''],
+            'phone'          => ['header' => 'Phone',          'value' => fn($s) => $s->phone ?? ''],
+            'email'          => ['header' => 'Email',          'value' => fn($s) => $s->email ?? ''],
+            'address'        => ['header' => 'Address',        'value' => fn($s) => $s->address ?? ''],
+            'payment_terms'  => ['header' => 'Payment Terms',  'value' => fn($s) => $s->payment_terms ?? ''],
+            'is_vatable'     => ['header' => 'VAT Registered', 'value' => fn($s) => $s->is_vatable ? 'Yes' : 'No'],
+            'notes'          => ['header' => 'Notes',          'value' => fn($s) => $s->notes ?? ''],
+            'created_at'     => ['header' => 'Date Added',     'value' => fn($s) => $s->created_at?->toDateString()],
+        ];
+
+        $orderedKeys = ['name','contact_person','phone','email','address','payment_terms','is_vatable','notes','created_at'];
+        $activeCols = array_filter(
+            array_intersect_key($allCols, array_flip($orderedKeys)),
+            fn($key) => $selectedCols === null || in_array($key, $selectedCols),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        if ($format === 'pdf') {
+            $pdf = Pdf::loadView('exports.suppliers', [
+                'suppliers'   => $suppliers,
+                'columns'     => $selectedCols,
+                'activeCols'  => $activeCols,
+                'generatedAt' => now(),
+                'search'      => $request->get('search'),
+            ])->setOptions([
+                'enable_php'          => false,
+                'isHtml5ParserEnabled'=> true,
+                'isRemoteEnabled'     => false,
+                'defaultFont'         => 'DejaVu Sans',
+                'dpi'                 => 150,
+            ])->setPaper('a4', 'landscape');
+
+            return $pdf->download('suppliers-' . now()->format('Y-m-d') . '.pdf');
+        }
+
+        if ($format === 'xlsx') {
+            $csvStream = $this->buildSuppliersCsvContent($suppliers, $activeCols);
+            $filename  = 'suppliers-' . now()->format('Y-m-d') . '.xlsx';
+            // We output CSV-compatible content with xlsx extension for spreadsheet apps
+            return response()->streamDownload($csvStream, $filename, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ]);
+        }
+
+        // Default: CSV
+        return response()->streamDownload(
+            $this->buildSuppliersCsvContent($suppliers, $activeCols),
+            'suppliers-' . now()->format('Y-m-d') . '.csv',
+            ['Content-Type' => 'text/csv; charset=UTF-8']
+        );
+    }
+
+    private function buildSuppliersCsvContent(iterable $suppliers, array $activeCols): \Closure
+    {
+        return function () use ($suppliers, $activeCols) {
+            $handle = fopen('php://output', 'w');
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, array_column($activeCols, 'header'));
+            foreach ($suppliers as $supplier) {
+                fputcsv($handle, array_map(fn($col) => ($col['value'])($supplier), $activeCols));
+            }
+            fclose($handle);
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -192,6 +316,13 @@ class SupplierController extends Controller
         $parts = [];
         if ($imported > 0) $parts[] = "{$imported} supplier(s) imported";
         if ($skipped  > 0) $parts[] = "{$skipped} skipped";
+
+        if ($imported > 0) {
+            AuditService::log('imported', 'suppliers', null, null, [
+                'imported' => $imported,
+                'skipped'  => $skipped,
+            ]);
+        }
 
         return response()->json([
             'imported' => $imported,

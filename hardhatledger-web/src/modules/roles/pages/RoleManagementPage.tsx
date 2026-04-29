@@ -27,6 +27,8 @@ interface Role {
 
 // ─── Permission metadata ──────────────────────────────────────────────────────
 const PERMISSION_META: Record<string, { label: string; description: string }> = {
+  // Dashboard
+  'dashboard.view':         { label: 'View Dashboard',        description: 'Access the main dashboard with KPIs, sales trends, and business overview' },
   // POS
   'pos.access':             { label: 'Access POS',           description: 'Open and use the point-of-sale terminal' },
   'pos.create-sale':        { label: 'Create Sale',          description: 'Process new sales transactions' },
@@ -146,6 +148,8 @@ const REVERSE_DEPS = buildReverseDeps();
 
 // ─── Module map ───────────────────────────────────────────────────────────────
 const MODULE_MAP: { group: string; label: string; permissions: string[] }[] = [
+  { group: 'General', label: 'Dashboard',
+    permissions: ['dashboard.view'] },
   { group: 'POS', label: 'Point of Sale',
     permissions: ['pos.access', 'pos.create-sale', 'pos.void-sale', 'pos.process-refund', 'pos.apply-discount', 'pos.view-daily-summary'] },
   { group: 'POS', label: 'Clients',
@@ -177,6 +181,7 @@ const MODULE_MAP: { group: string; label: string; permissions: string[] }[] = [
 const ALL_PERMISSIONS = MODULE_MAP.flatMap((m) => m.permissions);
 
 const GROUP_META: Record<string, { icon: React.ReactNode; color: string }> = {
+  General:    { icon: <HiCollection className="w-4 h-4" />,    color: '#8B5CF6' },
   POS:        { icon: <HiShoppingCart className="w-4 h-4" />,  color: 'var(--n-success)' },
   Inventory:  { icon: <HiArchive className="w-4 h-4" />,       color: 'var(--n-info)' },
   Accounting: { icon: <HiCalculator className="w-4 h-4" />,    color: 'var(--n-accent)' },

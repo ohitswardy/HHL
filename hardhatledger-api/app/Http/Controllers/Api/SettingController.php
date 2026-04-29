@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -35,8 +36,17 @@ class SettingController extends Controller
         ]);
 
         $setting = Setting::findOrFail($key);
+        $oldValue = $setting->value;
         $setting->value = $request->value;
         $setting->save();
+
+        AuditService::log('updated', 'settings', null, [
+            'key'   => $setting->key,
+            'value' => $oldValue,
+        ], [
+            'key'   => $setting->key,
+            'value' => $setting->value,
+        ]);
 
         return response()->json([
             'data'    => [

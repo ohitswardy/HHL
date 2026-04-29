@@ -18,18 +18,23 @@ class InventoryService
         ?int $referenceId,
         ?float $unitCost,
         ?string $notes,
-        User $user
+        User $user,
+        bool $allowNegative = false,
     ): void {
-        DB::transaction(function () use ($product, $quantity, $type, $referenceType, $referenceId, $unitCost, $notes, $user) {
+        DB::transaction(function () use ($product, $quantity, $type, $referenceType, $referenceId, $unitCost, $notes, $user, $allowNegative) {
             $stock = InventoryStock::firstOrCreate(
                 ['product_id' => $product->id],
                 ['quantity_on_hand' => 0, 'quantity_reserved' => 0]
             );
 
             if ($type === 'out' && $stock->quantity_on_hand < $quantity) {
-                throw new \RuntimeException(
-                    "Insufficient stock for product [{$product->name}]. Available: {$stock->quantity_on_hand}, Requested: {$quantity}"
-                );
+                if (! $allowNegative) {
+                    throw new \RuntimeException(
+                        "Insufficient stock for product [{$product->name}]. Available: {$stock->quantity_on_hand}, Requested: {$quantity}"
+                    );
+                }
+                // Flag the movement notes so inventory module can surface the override
+                $notes = trim('[STOCK OVERRIDE — sold with insufficient stock] ' . ($notes ?? ''));
             }
 
             InventoryMovement::create([

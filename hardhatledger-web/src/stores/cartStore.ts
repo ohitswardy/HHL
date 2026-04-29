@@ -9,6 +9,7 @@ interface CartState {
   removeItem: (productId: number) => void;
   updateQuantity: (productId: number, quantity: number) => void;
   updateDiscount: (productId: number, discount: number) => void;
+  overridePrice: (productId: number, newPrice: number, reason: string) => void;
   setClient: (client: Client | null) => void;
   repriceAll: (priceMap: Record<number, number>) => void;
   setFulfillmentType: (type: 'delivery' | 'pickup') => void;
@@ -65,10 +66,21 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({ items });
   },
 
+  overridePrice: (productId, newPrice, reason) => {
+    const items = get().items.map((item) =>
+      item.product.id === productId
+        ? { ...item, unit_price: newPrice, line_total: item.quantity * newPrice - item.discount, price_override: newPrice, price_override_reason: reason }
+        : item
+    );
+    set({ items });
+  },
+
   setClient: (client) => set({ client }),
 
   repriceAll: (priceMap) => {
     const items = get().items.map((item) => {
+      // Preserve manually overridden prices — they should not be reset by client tier changes
+      if (item.price_override != null) return item;
       const newPrice = priceMap[item.product.id] ?? item.unit_price;
       return { ...item, unit_price: newPrice, line_total: item.quantity * newPrice - item.discount };
     });

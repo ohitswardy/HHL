@@ -13,6 +13,7 @@ class SaleItem extends Model
         'unit_price',
         'discount',
         'line_total',
+        'price_override_reason',
     ];
 
     protected function casts(): array

@@ -88,10 +88,12 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
-          <NavLink to="/dashboard" end onClick={onClose} className={linkClass}>
-            <HiHome className="w-5 h-5" />
-            Dashboard
-          </NavLink>
+          {(hasPermission('dashboard.view') || hasRole('Super Admin')) && (
+            <NavLink to="/dashboard" end onClick={onClose} className={linkClass}>
+              <HiHome className="w-5 h-5" />
+              Dashboard
+            </NavLink>
+          )}
 
           {groups.map((group) => {
             const visibleItems = group.items.filter(isVisible);

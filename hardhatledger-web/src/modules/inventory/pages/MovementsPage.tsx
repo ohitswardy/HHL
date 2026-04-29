@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card } from '../../../components/ui/Card';
 import { Badge } from '../../../components/ui/Badge';
 import { DatePicker } from '../../../components/ui/DatePicker';
@@ -7,7 +7,7 @@ import { Spinner } from '../../../components/ui/Spinner';
 import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
 import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
 import { useDebounce } from '../../../lib/useDebounce';
-import { HiChevronLeft, HiChevronRight, HiFilter, HiX, HiDocumentDownload } from 'react-icons/hi';
+import { HiChevronLeft, HiChevronRight, HiFilter, HiX, HiDocumentDownload, HiRefresh } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -40,7 +40,6 @@ export function MovementsPage() {
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
   const [exporting, setExporting] = useState(false);
   const [exportPickerOpen, setExportPickerOpen] = useState(false);
-  const exportRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -55,7 +54,7 @@ export function MovementsPage() {
     if (filterFrom) params.from = filterFrom;
     if (filterTo)   params.to   = filterTo;
     if (filterType) params.type = filterType;
-    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    if (search.trim()) params.search = search.trim();
     return params;
   };
 
@@ -144,7 +143,15 @@ export function MovementsPage() {
           <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">Full audit trail of all stock changes</p>
         </div>
 
-        <div className="shrink-0">
+        <div className="shrink-0 flex items-center gap-2">
+          <button
+            onClick={() => fetchMovements(page, search, filterType, filterFrom, filterTo)}
+            className="neu-btn neu-btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}
+          >
+            <HiRefresh className="w-4 h-4" />
+            Refresh
+          </button>
           <button
             onClick={() => setExportPickerOpen(true)}
             disabled={exporting}

@@ -8,6 +8,7 @@ use App\Http\Requests\PurchaseOrder\StorePurchaseOrderRequest;
 use App\Http\Resources\PurchaseOrderResource;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Services\AuditService;
 use App\Services\ExpenseService;
 use App\Services\InventoryService;
 use App\Services\JournalService;
@@ -90,6 +91,18 @@ class PurchaseOrderController extends Controller
         });
 
         $po->load(['supplier', 'user', 'items.product']);
+
+        AuditService::log('created', 'purchase_orders', $po->id, null, [
+            'po_number'     => $po->po_number,
+            'supplier_id'   => $po->supplier_id,
+            'supplier_name' => $po->supplier?->name,
+            'status'        => $po->status,
+            'total_amount'  => (float) $po->total_amount,
+            'expected_date' => $po->expected_date,
+            'item_count'    => $po->items->count(),
+            'payment_method'=> $po->payment_method,
+        ]);
+
         return response()->json(['data' => new PurchaseOrderResource($po)], 201);
     }
 
@@ -101,6 +114,8 @@ class PurchaseOrderController extends Controller
 
     public function receive(ReceivePurchaseOrderRequest $request, PurchaseOrder $purchaseOrder): JsonResponse
     {
+        $oldStatus = $purchaseOrder->status;
+
         DB::transaction(function () use ($request, $purchaseOrder) {
             $allReceived = true;
 
@@ -147,6 +162,17 @@ class PurchaseOrderController extends Controller
         }
 
         $purchaseOrder->load(['supplier', 'user', 'items.product']);
+
+        AuditService::log('received', 'purchase_orders', $purchaseOrder->id, ['status' => $oldStatus], [
+            'po_number'    => $purchaseOrder->po_number,
+            'status'       => $purchaseOrder->status,
+            'received_date'=> $purchaseOrder->received_date,
+            'items_received' => collect($request->items)->map(fn($i) => [
+                'product_id' => $i['product_id'],
+                'quantity'   => $i['quantity_received'],
+            ])->all(),
+        ]);
+
         return response()->json(['data' => new PurchaseOrderResource($purchaseOrder)]);
     }
 
@@ -161,6 +187,8 @@ class PurchaseOrderController extends Controller
         $request->validate([
             'cancellation_notes' => ['nullable', 'string', 'max:1000'],
         ]);
+
+        $oldStatus = $purchaseOrder->status;
 
         DB::transaction(function () use ($request, $purchaseOrder) {
             $purchaseOrder->load(['items', 'supplier', 'expense']);
@@ -204,6 +232,14 @@ class PurchaseOrderController extends Controller
         });
 
         $purchaseOrder->load(['supplier', 'user', 'items.product']);
+
+        AuditService::log('cancelled', 'purchase_orders', $purchaseOrder->id, ['status' => $oldStatus], [
+            'po_number'          => $purchaseOrder->po_number,
+            'status'             => $purchaseOrder->status,
+            'cancelled_at'       => $purchaseOrder->cancelled_at,
+            'cancellation_notes' => $purchaseOrder->cancellation_notes,
+        ]);
+
         return response()->json(['data' => new PurchaseOrderResource($purchaseOrder)]);
     }
 

@@ -23,7 +23,25 @@ export function LoginPage() {
       await login(email, password);
       setIsSuccess(true);
       toast.success('Welcome to HardhatLedger!');
-      setTimeout(() => navigate('/dashboard'), 800);
+      // Redirect to the first route the user has access to
+      const loggedInUser = useAuthStore.getState().user;
+      const perms: string[] = loggedInUser?.permissions ?? [];
+      const roles: string[] = loggedInUser?.roles ?? [];
+      const PRIORITY = [
+        { path: '/dashboard',        permission: 'dashboard.view' },
+        { path: '/pos',              permission: 'pos.access' },
+        { path: '/inventory',        permission: 'products.view' },
+        { path: '/accounting',       permission: 'accounting.view' },
+        { path: '/clients',          permission: 'clients.view' },
+        { path: '/suppliers',        permission: 'suppliers.view' },
+        { path: '/purchase-orders',  permission: 'purchase-orders.view' },
+        { path: '/users',            permission: 'users.view' },
+        { path: '/roles',            permission: 'roles.view' },
+      ];
+      const home = roles.includes('Super Admin')
+        ? '/dashboard'
+        : (PRIORITY.find((r) => perms.includes(r.permission))?.path ?? '/dashboard');
+      setTimeout(() => navigate(home), 800);
     } catch {
       setShake(true);
       toast.error('Invalid email or password.');

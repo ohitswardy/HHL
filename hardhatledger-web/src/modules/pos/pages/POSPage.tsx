@@ -4,12 +4,14 @@ import { Card } from '../../../components/ui/Card';
 import { Select } from '../../../components/ui/Select';
 import { Modal } from '../../../components/ui/Modal';
 import { Badge } from '../../../components/ui/Badge';
-import { HiSearch, HiPlus, HiMinus, HiTrash, HiShoppingCart, HiLightningBolt, HiClock, HiTag } from 'react-icons/hi';
+import { Input } from '../../../components/ui/Input';
+import { HiSearch, HiPlus, HiMinus, HiTrash, HiShoppingCart, HiLightningBolt, HiClock, HiTag, HiPencilAlt, HiUserAdd, HiExclamation, HiPrinter } from 'react-icons/hi';
 import { useCartStore } from '../../../stores/cartStore';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import { PaymentTermsModal, type PaymentTermsData } from '../components/PaymentTermsModal';
-import type { Product, Client, SalesTransaction, Category } from '../../../types';
+import { PriceOverrideModal } from '../components/PriceOverrideModal';
+import type { Product, Client, SalesTransaction, Category, ClientTier } from '../../../types';
 
 export function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -34,8 +36,24 @@ export function POSPage() {
   const [paymentTermsModal, setPaymentTermsModal] = useState(false);
   const [paymentTermsData, setPaymentTermsData] = useState<PaymentTermsData | null>(null);
   const [discountEdit, setDiscountEdit] = useState<Record<number, string>>({});
+  const [qtyEdit, setQtyEdit] = useState<Record<number, string>>({});
   const [applyTax, setApplyTax] = useState(false);
   const [systemTaxRate, setSystemTaxRate] = useState(12);
+  const [priceOverrideModal, setPriceOverrideModal] = useState(false);
+  const [priceOverrideTarget, setPriceOverrideTarget] = useState<{
+    productId: number;
+    productName: string;
+    currentPrice: number;
+    originalPrice: number;
+  } | null>(null);
+  const [stockOverrideModal, setStockOverrideModal] = useState(false);
+  const [stockOverrideItems, setStockOverrideItems] = useState<{ name: string; sku: string; inCart: number; available: number }[]>([]);
+  const [stockOverrideConfirmed, setStockOverrideConfirmed] = useState(false);
+  const [quickAddClientModal, setQuickAddClientModal] = useState(false);
+  const [tiers, setTiers] = useState<ClientTier[]>([]);
+  const [clientForm, setClientForm] = useState({ business_name: '', tin: '', contact_person: '', phone: '', email: '', address: '', client_tier_id: '', credit_limit: '0', notes: '' });
+  const [savingClient, setSavingClient] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const skuRef = useRef<HTMLInputElement>(null);
 
@@ -49,6 +67,41 @@ export function POSPage() {
       if (tp) return Number(tp.price);
     }
     return Number(product.base_selling_price);
+  };
+
+  const handlePrintReceipt = async () => {
+    if (!lastSale) return;
+    setPrinting(true);
+    try {
+      const res = await api.get(`/pos/sales/${lastSale.id}/receipt`, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+      if (isMobile) {
+        // On mobile the native PDF viewer handles printing via the share sheet
+        window.open(blobUrl, '_blank');
+      } else {
+        // On desktop, inject a hidden iframe and trigger the print dialog automatically
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden;';
+        document.body.appendChild(iframe);
+        iframe.src = blobUrl;
+        iframe.onload = () => {
+          setTimeout(() => {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            setTimeout(() => {
+              document.body.removeChild(iframe);
+              URL.revokeObjectURL(blobUrl);
+            }, 60_000); // keep alive until print dialog closes
+          }, 300);
+        };
+      }
+      toast.success('Opening print dialog…');
+    } catch {
+      toast.error('Failed to print receipt');
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const handleClientChange = (clientId: number | string) => {
@@ -68,6 +121,11 @@ export function POSPage() {
     api.get('/settings').then((res) => {
       const rate = parseFloat(res.data.data?.tax_rate?.value ?? '12');
       if (!isNaN(rate) && rate >= 0) setSystemTaxRate(rate);
+    });
+    api.get('/client-tiers').then((res) => {
+      const t: ClientTier[] = res.data.data;
+      setTiers(t);
+      setClientForm((f) => ({ ...f, client_tier_id: t[0]?.id?.toString() || '' }));
     });
   }, []);
 
@@ -121,9 +179,12 @@ export function POSPage() {
   const addToCart = (product: Product, qty = 1) => {
     const stock = product.stock?.quantity_on_hand ?? 0;
     const inCart = cart.items.find((i) => i.product.id === product.id)?.quantity ?? 0;
-    if (inCart >= stock) {
-      toast.error(`Max stock reached (${stock})`);
-      return;
+    if (inCart + qty > stock) {
+      if (stock <= 0) {
+        toast(`Out of stock — will require override to complete sale`, { icon: '⚠️' });
+      } else {
+        toast(`Exceeds available stock (${stock}) — override required at checkout`, { icon: '⚠️' });
+      }
     }
     const price = resolvePrice(product, cart.client);
     cart.addItem(product, qty, price);
@@ -149,8 +210,44 @@ export function POSPage() {
     skuRef.current?.focus();
   };
 
+  const handleQuickAddClient = async () => {
+    if (!clientForm.business_name.trim()) { toast.error('Business name is required'); return; }
+    setSavingClient(true);
+    try {
+      const payload = { ...clientForm, client_tier_id: Number(clientForm.client_tier_id), credit_limit: parseFloat(clientForm.credit_limit) || 0 };
+      const res = await api.post('/clients', payload);
+      const newClient: Client = res.data.data;
+      setClients((prev) => [...prev, newClient]);
+      handleClientChange(newClient.id);
+      toast.success(`Client "${newClient.business_name}" created and selected`);
+      setQuickAddClientModal(false);
+      setClientForm({ business_name: '', tin: '', contact_person: '', phone: '', email: '', address: '', client_tier_id: tiers[0]?.id?.toString() || '', credit_limit: '0', notes: '' });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to create client');
+    } finally {
+      setSavingClient(false);
+    }
+  };
+
   const handleCompleteSale = async () => {
     if (cart.items.length === 0) { toast.error('Cart is empty'); return; }
+
+    // Check for items that exceed available stock
+    const overItems = cart.items
+      .filter((i) => i.quantity > (i.product.stock?.quantity_on_hand ?? 0))
+      .map((i) => ({
+        name: i.product.name,
+        sku: i.product.sku,
+        inCart: i.quantity,
+        available: i.product.stock?.quantity_on_hand ?? 0,
+      }));
+
+    if (overItems.length > 0 && !stockOverrideConfirmed) {
+      setStockOverrideItems(overItems);
+      setStockOverrideModal(true);
+      return;
+    }
+
     setConfirmSaleModal(true);
   };
 
@@ -205,10 +302,13 @@ export function POSPage() {
       const payload = {
         client_id: cart.client?.id || null,
         fulfillment_type: cart.fulfillmentType,
+        force_override: stockOverrideConfirmed,
         items: cart.items.map((i) => ({
           product_id: i.product.id,
           quantity: i.quantity,
+          unit_price: i.unit_price,
           discount: i.discount,
+          price_override_reason: i.price_override_reason ?? null,
         })),
         payments: paymentsPayload,
         delivery_fee: fee,
@@ -228,6 +328,8 @@ export function POSPage() {
       setPaymentTermsData(null);
       setPaymentMethod('cash');
       setApplyTax(false);
+      setStockOverrideConfirmed(false);
+      setStockOverrideItems([]);
       setProductRefresh((n) => n + 1);
       setReceiptModal(true);
     } catch (err: any) {
@@ -269,8 +371,21 @@ export function POSPage() {
             )}
             <input ref={searchRef} className="neu-inline-input w-full" style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }} placeholder='Search by name or SKU (press "/" to focus)' value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="flex-1">
-            <Select value={cart.client?.id || ''} onChange={(e) => handleClientChange(e.target.value)} options={clients.map((c) => ({ value: c.id, label: `${c.business_name} (${c.tier?.name || 'N/A'})` }))} placeholder="Walk-in Customer" />
+          <div className="flex-1 flex gap-1.5">
+            <Select
+              value={cart.client?.id || ''}
+              onChange={(e) => handleClientChange(e.target.value)}
+              options={clients.map((c) => ({ value: c.id, label: `${c.business_name} (${c.tier?.name || 'N/A'})` }))}
+              placeholder="Walk-in Customer"
+            />
+            <button
+              onClick={() => setQuickAddClientModal(true)}
+              className="neu-btn-icon shrink-0"
+              title="Add new customer"
+              style={{ padding: '0.45rem 0.6rem', borderRadius: '0.5rem', background: 'var(--n-surface-raised, var(--n-surface))', border: '1px solid var(--n-border)', color: 'var(--n-accent)' }}
+            >
+              <HiUserAdd className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -385,6 +500,22 @@ export function POSPage() {
                       >
                         <HiTag className="w-4 h-4" />
                       </button>
+                      <button
+                        onClick={() => {
+                          setPriceOverrideTarget({
+                            productId: item.product.id,
+                            productName: item.product.name,
+                            currentPrice: item.unit_price,
+                            originalPrice: resolvePrice(item.product, cart.client),
+                          });
+                          setPriceOverrideModal(true);
+                        }}
+                        className="neu-btn-icon"
+                        title="Override price for this transaction"
+                        style={item.price_override != null ? { color: 'var(--n-accent)' } : undefined}
+                      >
+                        <HiPencilAlt className="w-4 h-4" />
+                      </button>
                       <button onClick={() => cart.removeItem(item.product.id)} className="neu-btn-icon danger"><HiTrash className="w-4 h-4" /></button>
                     </div>
                   </div>
@@ -410,10 +541,48 @@ export function POSPage() {
                   {!isEditingDiscount && item.discount > 0 && (
                     <p className="text-xs mt-0.5" style={{ color: 'var(--n-danger)' }}>-₱{item.discount.toFixed(2)} disc</p>
                   )}
+                  {item.price_override != null && (
+                    <p className="text-xs mt-0.5 font-medium" style={{ color: 'var(--n-accent)' }}>
+                      Price overridden · {item.price_override_reason}
+                    </p>
+                  )}
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-2">
                       <button onClick={() => cart.updateQuantity(item.product.id, Math.max(1, item.quantity - 1))} className="neu-qty-btn"><HiMinus className="w-3 h-3" /></button>
-                      <span className="w-8 text-center font-semibold">{item.quantity}</span>
+                      {item.product.id in qtyEdit ? (
+                        <input
+                          type="number"
+                          min="1"
+                          autoFocus
+                          className="neu-inline-input text-center font-semibold"
+                          style={{ width: '3rem', fontSize: '0.875rem', padding: '0.1rem 0.25rem' }}
+                          value={qtyEdit[item.product.id]}
+                          onChange={(e) => setQtyEdit((prev) => ({ ...prev, [item.product.id]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === 'Tab') {
+                              const val = Math.max(1, parseInt(qtyEdit[item.product.id], 10) || 1);
+                              cart.updateQuantity(item.product.id, val);
+                              setQtyEdit((prev) => { const n = { ...prev }; delete n[item.product.id]; return n; });
+                            }
+                            if (e.key === 'Escape') {
+                              setQtyEdit((prev) => { const n = { ...prev }; delete n[item.product.id]; return n; });
+                            }
+                          }}
+                          onBlur={() => {
+                            const val = Math.max(1, parseInt(qtyEdit[item.product.id], 10) || 1);
+                            cart.updateQuantity(item.product.id, val);
+                            setQtyEdit((prev) => { const n = { ...prev }; delete n[item.product.id]; return n; });
+                          }}
+                        />
+                      ) : (
+                        <span
+                          className="w-8 text-center font-semibold cursor-pointer hover:underline"
+                          title="Click to edit quantity"
+                          onClick={() => setQtyEdit((prev) => ({ ...prev, [item.product.id]: String(item.quantity) }))}
+                        >
+                          {item.quantity}
+                        </span>
+                      )}
                       <button onClick={() => cart.updateQuantity(item.product.id, item.quantity + 1)} className="neu-qty-btn"><HiPlus className="w-3 h-3" /></button>
                     </div>
                     <span className="font-semibold">{item.line_total.toFixed(2)}</span>
@@ -761,7 +930,7 @@ export function POSPage() {
                 </div>
               )}
 
-              <div className="flex gap-3 justify-center pt-2">
+              <div className="flex gap-3 justify-center pt-2 flex-wrap">
                 <Button variant="outline" onClick={async () => {
                   try {
                     const res = await api.get(`/pos/sales/${lastSale.id}/receipt`, { responseType: 'blob' });
@@ -774,11 +943,176 @@ export function POSPage() {
                 }}>
                   Download Receipt
                 </Button>
+                <Button variant="outline" onClick={handlePrintReceipt} loading={printing}>
+                  <HiPrinter className="w-4 h-4 mr-1.5" />
+                  Print Receipt
+                </Button>
                 <Button variant="amber" onClick={() => setReceiptModal(false)}>New Sale</Button>
               </div>
             </div>
           );
         })()}
+      </Modal>
+
+      {/* Quick Add Client Modal */}
+      <Modal isOpen={quickAddClientModal} onClose={() => setQuickAddClientModal(false)} title="Add New Customer" width="lg">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Business Name *"
+              value={clientForm.business_name}
+              onChange={(e) => setClientForm({ ...clientForm, business_name: e.target.value })}
+              placeholder="e.g. Twinbar Construction"
+              required
+            />
+            <Input
+              label="TIN #"
+              value={clientForm.tin}
+              onChange={(e) => setClientForm({ ...clientForm, tin: e.target.value })}
+              placeholder="000-000-000-000"
+            />
+            <Input
+              label="Contact Person"
+              value={clientForm.contact_person}
+              onChange={(e) => setClientForm({ ...clientForm, contact_person: e.target.value })}
+              placeholder="e.g. Juan Dela Cruz"
+            />
+            <Input
+              label="Phone"
+              value={clientForm.phone}
+              onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })}
+              placeholder="+63 9XX XXX XXXX"
+            />
+            <Input
+              label="Email"
+              value={clientForm.email}
+              onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+              placeholder="email@example.com"
+            />
+            <Select
+              label="Client Tier"
+              value={clientForm.client_tier_id}
+              onChange={(e) => setClientForm({ ...clientForm, client_tier_id: e.target.value })}
+              options={tiers.map((t) => ({ value: t.id, label: t.name }))}
+            />
+            <Input
+              label="Credit Limit"
+              type="number"
+              step="0.01"
+              value={clientForm.credit_limit}
+              onChange={(e) => setClientForm({ ...clientForm, credit_limit: e.target.value })}
+            />
+            <div className="col-span-2">
+              <Input
+                label="Address"
+                value={clientForm.address}
+                onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })}
+                placeholder="Street, City, Province"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="neu-label">Notes</label>
+              <textarea
+                className="neu-inline-input w-full"
+                style={{ minHeight: '4rem', resize: 'vertical', fontFamily: 'inherit' }}
+                placeholder="Optional notes about this customer"
+                value={clientForm.notes}
+                onChange={(e) => setClientForm({ ...clientForm, notes: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-1">
+            <Button variant="secondary" onClick={() => setQuickAddClientModal(false)}>Cancel</Button>
+            <Button variant="amber" onClick={handleQuickAddClient} loading={savingClient}>
+              <HiUserAdd className="w-4 h-4 mr-1.5" /> Save &amp; Select
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Price Override Modal */}
+      <PriceOverrideModal
+        isOpen={priceOverrideModal}
+        target={priceOverrideTarget}
+        onClose={() => setPriceOverrideModal(false)}
+        onApply={(productId, newPrice, reason) => {
+          cart.overridePrice(productId, newPrice, reason);
+          toast.success(`Price overridden: ₱${newPrice.toFixed(2)} (${reason})`);
+        }}
+      />
+
+      {/* Stock Quantity Override Warning Modal */}
+      <Modal isOpen={stockOverrideModal} onClose={() => setStockOverrideModal(false)} title="Stock quantity warning" width="sm">
+        <div className="space-y-4">
+          {/* Header notice */}
+          <div className="flex gap-3 items-start rounded-lg p-3" style={{ background: 'rgba(245, 166, 35, 0.08)', border: '1px solid rgba(245, 166, 35, 0.3)' }}>
+            <div className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'rgba(245, 166, 35, 0.15)' }}>
+              <HiExclamation className="w-5 h-5" style={{ color: 'var(--n-accent)' }} />
+            </div>
+            <p className="text-sm" style={{ color: 'var(--n-text-secondary)' }}>
+              The following items in the cart exceed current inventory.<br />
+              The sale will result in negative stock.
+            </p>
+          </div>
+
+          {/* Items table */}
+          <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--n-border)' }}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--n-surface-raised, var(--n-surface))', borderBottom: '1px solid var(--n-border)' }}>
+                  <th className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--n-text-secondary)' }}>Item</th>
+                  <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--n-text-secondary)' }}>In cart</th>
+                  <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--n-text-secondary)' }}>Available</th>
+                  <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--n-text-secondary)' }}>Short by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockOverrideItems.map((item, idx) => (
+                  <tr key={idx} style={{ borderBottom: idx < stockOverrideItems.length - 1 ? '1px solid var(--n-border)' : undefined }}>
+                    <td className="px-3 py-2">
+                      <p className="font-medium" style={{ color: 'var(--n-text)' }}>{item.name}</p>
+                      <p className="text-xs font-mono" style={{ color: 'var(--n-text-dim)' }}>{item.sku}</p>
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--n-text)' }}>{item.inCart}</td>
+                    <td className="px-3 py-2 text-right" style={{ color: 'var(--n-text-secondary)' }}>{item.available}</td>
+                    <td className="px-3 py-2 text-right font-bold" style={{ color: 'var(--n-danger)' }}>{item.available - item.inCart}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Explanation */}
+          <div className="rounded-lg px-3 py-2.5 text-xs leading-relaxed" style={{ background: 'rgba(245, 166, 35, 0.06)', border: '1px solid rgba(245, 166, 35, 0.25)', color: 'var(--n-text-secondary)' }}>
+            <strong style={{ color: 'var(--n-text)' }}>Proceeding will post negative stock.</strong> This is allowed but
+            should be corrected with a stock adjustment or purchase order receipt as soon as possible.
+            Each overridden item will be flagged in the Inventory module.
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => {
+                setStockOverrideModal(false);
+                setStockOverrideConfirmed(false);
+              }}
+            >
+              Cancel sale
+            </Button>
+            <Button
+              variant="amber"
+              className="flex-1"
+              onClick={() => {
+                setStockOverrideConfirmed(true);
+                setStockOverrideModal(false);
+                setConfirmSaleModal(true);
+              }}
+            >
+              Proceed anyway
+            </Button>
+          </div>
+        </div>
       </Modal>
 
     </div>

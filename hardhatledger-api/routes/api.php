@@ -34,8 +34,10 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/auth/me', [AuthController::class, 'me']);
 
-        // Dashboard (all authenticated users)
-        Route::get('/dashboard', [DashboardController::class, 'summary']);
+        // Dashboard
+        Route::middleware('permission:dashboard.view')->group(function () {
+            Route::get('/dashboard', [DashboardController::class, 'summary']);
+        });
 
         // User Management (Super Admin only)
         Route::middleware('permission:users.view')->group(function () {
@@ -68,6 +70,7 @@ Route::prefix('v1')->group(function () {
         // Clients
         Route::middleware('permission:clients.view')->group(function () {
             Route::get('/clients', [ClientController::class, 'index']);
+            Route::get('/clients/export', [ClientController::class, 'export']);
             Route::get('/clients/{client}', [ClientController::class, 'show']);
         });
         Route::middleware('permission:clients.create')->group(function () {
@@ -90,6 +93,7 @@ Route::prefix('v1')->group(function () {
         // Suppliers
         Route::middleware('permission:suppliers.view')->group(function () {
             Route::get('/suppliers', [SupplierController::class, 'index']);
+            Route::get('/suppliers/export', [SupplierController::class, 'export']);
             Route::get('/suppliers/{supplier}', [SupplierController::class, 'show']);
         });
         Route::middleware('permission:suppliers.create')->group(function () {

@@ -20,6 +20,8 @@ class StoreSaleRequest extends FormRequest
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
+            'items.*.price_override_reason' => ['nullable', 'string', 'max:100'],
             'payments' => ['required', 'array', 'min:1'],
             'payments.*.payment_method'   => ['required', Rule::in(['cash', 'card', 'bank_transfer', 'check', 'credit', 'business_bank'])],
             'payments.*.amount'            => ['required', 'numeric', 'min:0.01'],
@@ -29,6 +31,7 @@ class StoreSaleRequest extends FormRequest
             'delivery_fee'     => ['nullable', 'numeric', 'min:0'],
             'tax_amount'       => ['nullable', 'numeric', 'min:0'],
             'notes'            => ['nullable', 'string'],
+            'force_override'   => ['nullable', 'boolean'],
         ];
     }
 }

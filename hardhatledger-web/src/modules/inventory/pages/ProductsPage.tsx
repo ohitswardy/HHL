@@ -10,7 +10,7 @@ import { ImportPreviewModal } from '../components/ImportPreviewModal';
 import type { ImportPreviewData } from '../components/ImportPreviewModal';
 import { ExportColumnPickerModal } from '../../../components/ui/ExportColumnPickerModal';
 import type { ExportFormat } from '../../../components/ui/ExportColumnPickerModal';
-import { HiPlus, HiPencil, HiTrash, HiSearch, HiDocumentDownload, HiUpload, HiDocumentText, HiTable, HiChevronLeft, HiChevronRight, HiExclamation } from 'react-icons/hi';
+import { HiPlus, HiPencil, HiTrash, HiSearch, HiDocumentDownload, HiUpload, HiDocumentText, HiTable, HiChevronLeft, HiChevronRight, HiExclamation, HiRefresh } from 'react-icons/hi';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import type { Product, Category, Supplier } from '../../../types';
@@ -40,11 +40,12 @@ export function ProductsPage() {
   const [exporting, setExporting] = useState(false);
 
   const [lowStockCount, setLowStockCount] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Reset to page 1 when filters change
   useEffect(() => { setPage(1); }, [search, filterCategory, filterStatus]);
 
-  // Fetch products whenever page or filters change
+  // Fetch products whenever page, filters, or refreshKey change
   useEffect(() => {
     setLoading(true);
     const params: Record<string, unknown> = { page, per_page: 15 };
@@ -54,7 +55,7 @@ export function ProductsPage() {
     api.get('/products', { params })
       .then((res) => { setProducts(res.data.data); setMeta(res.data.meta); })
       .finally(() => setLoading(false));
-  }, [page, search, filterCategory, filterStatus]);
+  }, [page, search, filterCategory, filterStatus, refreshKey]);
 
   useEffect(() => {
     api.get('/categories').then((res) => setCategories(res.data.data));
@@ -209,6 +210,10 @@ export function ProductsPage() {
           {!loading && <p className="text-sm text-[var(--n-text-secondary)] mt-0.5">{meta.total} product{meta.total !== 1 ? 's' : ''} total</p>}
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setRefreshKey((k) => k + 1)}>
+            <HiRefresh className="w-4 h-4 mr-1" />
+            Refresh
+          </Button>
           {/* Export */}
           <Button onClick={() => setExportPickerOpen(true)} variant="secondary" disabled={exporting}>
             <HiDocumentDownload className="w-4 h-4 mr-2" />

@@ -15,6 +15,7 @@ class StoreClientRequest extends FormRequest
     {
         return [
             'business_name' => ['required', 'string', 'max:255'],
+            'tin' => ['nullable', 'string', 'max:50'],
             'contact_person' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:500'],

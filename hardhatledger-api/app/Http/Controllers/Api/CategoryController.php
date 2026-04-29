@@ -7,6 +7,7 @@ use App\Http\Requests\Category\StoreCategoryRequest;
 use App\Http\Requests\Category\UpdateCategoryRequest;
 use App\Http\Resources\CategoryResource;
 use App\Models\Category;
+use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 
 class CategoryController extends Controller
@@ -27,6 +28,12 @@ class CategoryController extends Controller
         $category = Category::create($request->validated());
         $category->loadCount('products');
         $category->load(['children' => fn ($q) => $q->withCount('products')->orderBy('name')]);
+
+        AuditService::log('created', 'categories', $category->id, null, [
+            'name'      => $category->name,
+            'parent_id' => $category->parent_id,
+        ]);
+
         return response()->json(['data' => new CategoryResource($category)], 201);
     }
 
@@ -39,9 +46,20 @@ class CategoryController extends Controller
 
     public function update(UpdateCategoryRequest $request, Category $category): JsonResponse
     {
+        $old = [
+            'name'      => $category->name,
+            'parent_id' => $category->parent_id,
+        ];
+
         $category->update($request->validated());
         $category->loadCount('products');
         $category->load(['children' => fn ($q) => $q->withCount('products')->orderBy('name')]);
+
+        AuditService::log('updated', 'categories', $category->id, $old, [
+            'name'      => $category->name,
+            'parent_id' => $category->parent_id,
+        ]);
+
         return response()->json(['data' => new CategoryResource($category)]);
     }
 
@@ -56,7 +74,12 @@ class CategoryController extends Controller
             ], 422);
         }
 
+        $snapshot = ['name' => $category->name, 'parent_id' => $category->parent_id];
+
         $category->delete();
+
+        AuditService::log('deleted', 'categories', $category->id, $snapshot, null);
+
         return response()->json(null, 204);
     }
 }

@@ -13,6 +13,7 @@ use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\Payment;
 use App\Models\SalesTransaction;
+use App\Services\AuditService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -59,6 +60,15 @@ class AccountingController extends Controller
 
         Cache::forget(self::COA_CACHE_KEY);
 
+        AuditService::log('created', 'chart_of_accounts', $account->id, null, [
+            'code'        => $account->code,
+            'name'        => $account->name,
+            'type'        => $account->type,
+            'detail_type' => $account->detail_type,
+            'parent_id'   => $account->parent_id,
+            'is_active'   => (bool) $account->is_active,
+        ]);
+
         return response()->json([
             'data' => new ChartOfAccountResource($account),
             'message' => 'Account created successfully.',
@@ -78,9 +88,27 @@ class AccountingController extends Controller
             'is_active'   => 'boolean',
         ]);
 
+        $old = [
+            'code'        => $account->code,
+            'name'        => $account->name,
+            'type'        => $account->type,
+            'detail_type' => $account->detail_type,
+            'parent_id'   => $account->parent_id,
+            'is_active'   => (bool) $account->is_active,
+        ];
+
         $account->update($validated);
 
         Cache::forget(self::COA_CACHE_KEY);
+
+        AuditService::log('updated', 'chart_of_accounts', $account->id, $old, [
+            'code'        => $account->code,
+            'name'        => $account->name,
+            'type'        => $account->type,
+            'detail_type' => $account->detail_type,
+            'parent_id'   => $account->parent_id,
+            'is_active'   => (bool) $account->is_active,
+        ]);
 
         return response()->json([
             'data' => new ChartOfAccountResource($account->fresh()),
@@ -106,9 +134,17 @@ class AccountingController extends Controller
             ], 422);
         }
 
+        $snapshot = [
+            'code' => $account->code,
+            'name' => $account->name,
+            'type' => $account->type,
+        ];
+
         $account->delete();
 
         Cache::forget(self::COA_CACHE_KEY);
+
+        AuditService::log('deleted', 'chart_of_accounts', $account->id, $snapshot, null);
 
         return response()->json(['message' => 'Account deleted successfully.']);
     }

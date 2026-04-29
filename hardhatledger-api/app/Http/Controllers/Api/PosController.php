@@ -8,6 +8,7 @@ use App\Http\Resources\SalesTransactionResource;
 use App\Models\Client;
 use App\Models\Product;
 use App\Models\SalesTransaction;
+use App\Services\AuditService;
 use App\Services\InventoryService;
 use App\Services\JournalService;
 use App\Services\PricingService;
@@ -39,16 +40,23 @@ class PosController extends Controller
             $itemsData = [];
             foreach ($request->items as $item) {
                 $product = Product::findOrFail($item['product_id']);
-                $unitPrice = $this->pricingService->resolvePrice($product, $client);
+
+                // Use the frontend-supplied unit_price when a price override was applied;
+                // otherwise resolve from PricingService as before.
+                $unitPrice = isset($item['unit_price']) && $item['unit_price'] !== null
+                    ? (float) $item['unit_price']
+                    : $this->pricingService->resolvePrice($product, $client);
+
                 $itemDiscount = $item['discount'] ?? 0;
                 $lineTotal = ($unitPrice * $item['quantity']) - $itemDiscount;
 
                 $itemsData[] = [
-                    'product_id' => $product->id,
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $unitPrice,
-                    'discount' => $itemDiscount,
-                    'line_total' => $lineTotal,
+                    'product_id'           => $product->id,
+                    'quantity'             => $item['quantity'],
+                    'unit_price'           => $unitPrice,
+                    'discount'             => $itemDiscount,
+                    'line_total'           => $lineTotal,
+                    'price_override_reason' => $item['price_override_reason'] ?? null,
                 ];
 
                 $subtotal += $unitPrice * $item['quantity'];
@@ -119,6 +127,7 @@ class PosController extends Controller
             }
 
             // Deduct inventory
+            $forceOverride = $request->boolean('force_override', false);
             foreach ($itemsData as $itemData) {
                 $product = Product::find($itemData['product_id']);
                 $this->inventoryService->adjustStock(
@@ -130,6 +139,7 @@ class PosController extends Controller
                     unitCost: $product->cost_price,
                     notes: "Sale #{$sale->transaction_number}",
                     user: $request->user(),
+                    allowNegative: $forceOverride,
                 );
             }
 
@@ -138,6 +148,20 @@ class PosController extends Controller
 
             return $sale;
         });
+
+        AuditService::log('created', 'pos_transactions', $sale->id, null, [
+            'transaction_number' => $sale->transaction_number,
+            'client_id'          => $sale->client_id,
+            'fulfillment_type'   => $sale->fulfillment_type,
+            'status'             => $sale->status,
+            'subtotal'           => (float) $sale->subtotal,
+            'discount_amount'    => (float) $sale->discount_amount,
+            'delivery_fee'       => (float) $sale->delivery_fee,
+            'tax_amount'         => (float) $sale->tax_amount,
+            'total_amount'       => (float) $sale->total_amount,
+            'item_count'         => count($request->items),
+            'payment_methods'    => collect($request->payments)->pluck('payment_method')->all(),
+        ]);
 
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
         return response()->json(['data' => new SalesTransactionResource($sale)], 201);
@@ -246,6 +270,15 @@ class PosController extends Controller
             $sale->update(['status' => 'voided']);
         });
 
+        AuditService::log('voided', 'pos_transactions', $sale->id,
+            ['status' => 'completed'],
+            [
+                'status'             => 'voided',
+                'transaction_number' => $sale->transaction_number,
+                'total_amount'       => (float) $sale->total_amount,
+            ]
+        );
+
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
         return response()->json(['data' => new SalesTransactionResource($sale)]);
     }
@@ -267,6 +300,16 @@ class PosController extends Controller
             ->where('status', 'pending')
             ->whereIn('payment_method', ['bank_transfer', 'check', 'credit', 'business_bank'])
             ->update(['status' => 'confirmed', 'paid_at' => now()]);
+
+        AuditService::log('marked_completed', 'pos_transactions', $sale->id,
+            ['status' => 'pending'],
+            [
+                'status'                  => 'completed',
+                'transaction_number'      => $sale->transaction_number,
+                'confirmed_payment_count' => $pendingDeferredPayments->count(),
+                'confirmed_amount'        => (float) $pendingDeferredPayments->sum('amount'),
+            ]
+        );
 
         // Post DR Cash/Bank / CR AR for each confirmed deferred payment.
         // Skip credit-method rows — they are AR placeholders whose journal entry was
@@ -381,6 +424,15 @@ class PosController extends Controller
             }
         });
 
+        AuditService::log('payment_recorded', 'pos_transactions', $sale->id, null, [
+            'transaction_number'  => $sale->transaction_number,
+            'payment_method'      => $request->payment_method,
+            'amount'              => (float) $request->amount,
+            'reference_number'    => $request->reference_number,
+            'target_payment_id'   => $request->input('target_payment_id'),
+            'sale_status_after'   => $sale->fresh()->status,
+        ]);
+
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
         return response()->json(['data' => new SalesTransactionResource($sale)]);
     }
@@ -406,7 +458,13 @@ class PosController extends Controller
             return response()->json(['message' => 'Credit payment not found or already settled.'], 422);
         }
 
+        $oldDueDate = $payment->getOriginal('due_date');
         $payment->update(['due_date' => $request->due_date]);
+
+        AuditService::log('credit_due_date_updated', 'pos_transactions', $sale->id,
+            ['payment_id' => (int) $request->payment_id, 'due_date' => $oldDueDate],
+            ['payment_id' => (int) $request->payment_id, 'due_date' => $request->due_date]
+        );
 
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
         return response()->json(['data' => new SalesTransactionResource($sale)]);
@@ -429,7 +487,13 @@ class PosController extends Controller
             ],
         ]);
 
+        $oldNumber = $sale->transaction_number;
         $sale->update(['transaction_number' => $request->transaction_number]);
+
+        AuditService::log('transaction_number_updated', 'pos_transactions', $sale->id,
+            ['transaction_number' => $oldNumber],
+            ['transaction_number' => $sale->transaction_number]
+        );
 
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
         return response()->json(['data' => new SalesTransactionResource($sale)]);
@@ -448,6 +512,13 @@ class PosController extends Controller
             'items.*.unit_price' => ['required_with:items', 'numeric', 'min:0'],
             'items.*.discount'   => ['required_with:items', 'numeric', 'min:0'],
         ]);
+
+        $oldSnapshot = [
+            'subtotal'        => (float) $sale->subtotal,
+            'discount_amount' => (float) $sale->discount_amount,
+            'total_amount'    => (float) $sale->total_amount,
+            'notes'           => $sale->notes,
+        ];
 
         DB::transaction(function () use ($request, $sale) {
             $originalTotal = (float) $sale->total_amount;
@@ -495,6 +566,15 @@ class PosController extends Controller
                 $sale->update(['notes' => $request->notes]);
             }
         });
+
+        $fresh = $sale->fresh();
+        AuditService::log('updated', 'pos_transactions', $sale->id, $oldSnapshot, [
+            'subtotal'           => (float) $fresh->subtotal,
+            'discount_amount'    => (float) $fresh->discount_amount,
+            'total_amount'       => (float) $fresh->total_amount,
+            'notes'              => $fresh->notes,
+            'transaction_number' => $fresh->transaction_number,
+        ]);
 
         $sale->load(['client.tier', 'user', 'items.product', 'payments']);
         return response()->json(['data' => new SalesTransactionResource($sale)]);

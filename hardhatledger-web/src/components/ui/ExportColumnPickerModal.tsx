@@ -19,7 +19,9 @@ export type ExportKey =
   | 'expenses'
   | 'bank-transactions'
   | 'audit-trail'
-  | 'client-statements';
+  | 'client-statements'
+  | 'suppliers'
+  | 'clients';
 
 export interface ExportColumnPickerModalProps {
   isOpen: boolean;
@@ -128,6 +130,29 @@ export const EXPORT_COLUMN_DEFINITIONS: Record<ExportKey, ExportColumn[]> = {
     { key: 'table_name',  label: 'Module',      default: true  },
     { key: 'record_id',   label: 'Record ID',   default: false },
     { key: 'ip_address',  label: 'IP Address',  default: false },
+  ],
+  suppliers: [
+    { key: 'name',          label: 'Supplier Name',   default: true,  required: true },
+    { key: 'contact_person',label: 'Contact Person',  default: true  },
+    { key: 'phone',         label: 'Phone',           default: true  },
+    { key: 'email',         label: 'Email',           default: true  },
+    { key: 'address',       label: 'Address',         default: true  },
+    { key: 'payment_terms', label: 'Payment Terms',   default: true  },
+    { key: 'is_vatable',    label: 'VAT Registered',  default: true  },
+    { key: 'notes',         label: 'Notes',           default: false },
+    { key: 'created_at',    label: 'Date Added',      default: false },
+  ],
+  clients: [
+    { key: 'business_name',    label: 'Business Name',   default: true,  required: true },
+    { key: 'contact_person',   label: 'Contact Person',  default: true  },
+    { key: 'phone',            label: 'Phone',           default: true  },
+    { key: 'email',            label: 'Email',           default: true  },
+    { key: 'address',          label: 'Address',         default: true  },
+    { key: 'tier',             label: 'Client Tier',     default: true  },
+    { key: 'credit_limit',     label: 'Credit Limit',    default: true  },
+    { key: 'outstanding_balance', label: 'Balance Due',  default: true  },
+    { key: 'notes',            label: 'Notes',           default: false },
+    { key: 'created_at',       label: 'Date Added',      default: false },
   ],
   'client-statements': [
     { key: 'transaction_number', label: 'Transaction #',    default: true,  required: true },
